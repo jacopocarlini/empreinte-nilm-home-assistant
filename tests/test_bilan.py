@@ -92,7 +92,8 @@ check("Coût de chaque appareil connu : heure, jour, mois, année", couts.get("P
       "annee": 2.4, "kwh_mois": 12.0}, f"({couts.get('PC')})")
 check("… seulement les appareils connus (pas le non identifié)", "Non identifié" not in couts and len(couts) >= 2, f"({list(couts)})")
 check("Le prix de chaque programme (prise partagée), avec son jour", co.ranking.get("utilisations", [{}])[0].get("eur") == 0.18
-      and co.ranking["utilisations"][0].get("jour") == "aujourd'hui",
+      and co.ranking["utilisations"][0].get("jour") == ("aujourd'hui" if _C.dt_util.as_local(_C.dt_util.utc_from_timestamp(
+          __import__("time").time() - 600)).date() == _C.dt_util.now().date() else "hier"),
       f"({co.ranking.get('utilisations')})")
 co.shared.runs.clear()
 # « Classement : repartir de zéro » en cours d'heure : HA donne n'importe quoi pour un départ pas encore compilé,

@@ -34,6 +34,13 @@ PROFILE_MAX_POINTS = 120
 RESEGMENT_KEY = "resegment_v7"   # à changer quand la façon de mesurer change : tout est re-mesuré
 
 
+def _slug(s: str) -> str:
+    """Comme entity.slug (les identifiants des capteurs), sans charger les modules d'entités de HA."""
+    import unicodedata
+    s = unicodedata.normalize("NFD", s or "").encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "_", s).strip("_") or "appareil"
+
+
 def _ts(v) -> float:
     """Un début de statistique HA (date ou nombre de secondes) en secondes."""
     return v.timestamp() if hasattr(v, "timestamp") else float(v)
@@ -513,9 +520,10 @@ class Coordinator:
             for name, sign in ((old, -1), (new, 1)):
                 if not name:
                     continue
-                sid = next((e for e in self.entity_ids("sh:" + self.shared.key(r["plug"], name)) if e.endswith("_energie")), None)
-                if sid:
-                    self._rest_op(sid, sign * k, [(t0, sign * a) for t0, a in where], t_line=time.time())
+                # le capteur d'énergie de cet appareil (son nom est fixe : au démarrage, il n'est pas encore créé)
+                sid = f"sensor.empreinte_prise_{_slug(name)}_energie"
+                self._rest_op(sid, sign * k, [(t0, sign * a) for t0, a in where], t_line=time.time())
+            self.ranking["t"] = 0                    # le classement et les coûts sont recalculés tout de suite
 
     def _shared_action(self, msg):
         a = msg["action"]
