@@ -156,6 +156,36 @@ def _dist(a, b):
     return math.sqrt(sum((x - y) ** 2 for x, y in zip(_vec(a), _vec(b))))
 
 
+def early(prof: list[int], names: list[str]) -> tuple[str | None, float]:
+    """Pendant le programme : lequel tourne, d'après son début (sans attendre la fin).
+    Un sèche-linge chauffe tout de suite (ou tire ~600 W stables, à pompe à chaleur) et son tambour ne s'arrête pas ;
+    un lave-linge tourne d'abord plusieurs minutes sans chauffer (remplissage), en s'arrêtant, puis chauffe l'eau
+    (ou pas, à froid)."""
+    kinds = {kind_of(n): n for n in names}
+    lave, seche = kinds.get("lave_linge"), kinds.get("seche_linge")
+    if not lave or not seche or not prof:
+        return None, 0.0
+    first = next((i for i, v in enumerate(prof) if v >= HEAT_W), None)
+    if first is not None:
+        pre = prof[:first]
+        mean = sum(pre) / len(pre) if pre else 0
+        if first * STEP <= 90 or mean >= 130:
+            return seche, 0.9                             # chauffe tout de suite, ou le tambour tourne fort avant
+        if first * STEP >= 120:
+            return lave, 0.9                              # tourne d'abord doucement sans chauffer (remplissage)
+        return None, 0.0
+    if len(prof) * STEP < 600:
+        return None, 0.0                                  # pas encore assez vu
+    mean = sum(prof) / len(prof)
+    pause = sum(1 for v in prof if v < ON_W) / len(prof)
+    mid = sum(1 for v in prof if 300 <= v < HEAT_W) / len(prof)
+    if mid >= 0.6 and pause < 0.05:
+        return seche, 0.85                                # pompe à chaleur : ~600 W sans arrêt
+    if mean < 200:
+        return lave, 0.85                                 # 10 min de petit moteur sans chauffer : un lavage
+    return None, 0.0
+
+
 def classify(f: dict, names: list[str], examples: dict[str, list[dict]]) -> tuple[str | None, float]:
     """Le nom le plus probable parmi ceux de la prise, et sa probabilité. (None, 0) si on ne peut pas dire."""
     if len(names) == 1:
@@ -237,7 +267,10 @@ class SharedPlugs:
                               "f": r["f"], "name": name if conf >= SURE else None, "guess": name, "conf": conf, "user": False})
             new += 1
         if open_run:
-            name, conf = classify(open_run["f"], names, ex) if open_run["f"]["D"] >= 600 else (None, 0.0)
+            # pendant le programme : d'abord son début (chauffe tout de suite ou pas), sinon tout ce qu'on en a vu
+            name, conf = early(open_run["prof"], names)
+            if name is None and open_run["f"]["D"] >= 1800:
+                name, conf = classify(open_run["f"], names, ex)
             if len(names) == 1:
                 name, conf = names[0], 1.0
             self.open[entity] = {"start": open_run["start"], "power": open_run["prof"][-1] if open_run["prof"] else 0,

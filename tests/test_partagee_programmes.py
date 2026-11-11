@@ -61,6 +61,34 @@ for truth, progs in cases.items():
         ok = n == truth and p >= S.SURE
         bad += not ok
         print(f"{'OK   ' if ok else 'ÉCHEC'} {truth:12s} {label:22s} -> {n} {p:.2f}  (D {f['D']//60} min, chauffe {f['heat']}, pos {f['heat_pos']}, mid {f['mid']}, blocs {f['blocks']})")
+# Pendant le programme : à chaque instant, le bon appareil ou « pas encore » ; jamais l'autre
+cases["Lave-linge"]["moteur 5 min puis chauffe (petits arrêts)"] = (
+    [(25, 40), (10, 0), (30, 30), (15, 3), (40, 50), (10, 0), (35, 30), (20, 8), (60, 45), (10, 0), (50, 35)]
+    + [(900, 1760)] + [(120, 160), (60, 4)] * 12 + [(240, 500)])
+cases["Sèche-linge"]["tambour 3 min avant de chauffer"] = [(180, 240)] + dry()[1:]
+late = {}
+for truth, progs in cases.items():
+    for label, segs in progs.items():
+        pts = curve(segs, 1_800_000_000)
+        found = None
+        for m in (2, 5, 8, 12, 20, 40):
+            now = 1_800_000_000 + m * 60
+            _, op = S.find_runs([p for p in pts if p[0] <= now], now)
+            n, p = S.early(op["prof"], names) if op else (None, 0.0)
+            if n is not None and n != truth:
+                bad += 1
+                print(f"ÉCHEC en direct {truth:12s} {label:30s} à {m} min -> {n}")
+            if n == truth and found is None:
+                found = m
+        late[(truth, label)] = found
+ok = all(v is not None and v <= 12 for v in late.values())
+bad += not ok
+print(f"{'OK   ' if ok else 'ÉCHEC'} en direct : jamais l'autre appareil ; trouvé en "
+      + ", ".join(f"{v} min" if v else "—" for v in late.values()))
+slow = [k for k, v in late.items() if not v or v > 12]
+if slow:
+    print("      pas trouvé avant 12 min :", slow)
+
 # Les noms en anglais (README.en) donnent les mêmes connaissances de départ
 for nom, k in (("Washing machine", "lave_linge"), ("Washer", "lave_linge"), ("Dryer", "seche_linge"), ("Tumble dryer", "seche_linge"),
                ("Dishwasher", "lave_vaisselle"), ("Sèche-linge", "seche_linge"), ("Lave-linge", "lave_linge"), ("Lave-vaisselle", "lave_vaisselle")):
