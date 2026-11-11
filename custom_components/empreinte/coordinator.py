@@ -20,7 +20,7 @@ from . import engine
 from .engine import engine_median
 from .const import (APPLIANCE_TIPS, CLIM_LAG_KWH, PROGRAMME_GAP_S, TIP_IDS, CLIM_MAX_W, VEILLE_NAME, HYP_MIN_DAYS, HYP_MIN_N, HYP_MIN_SCORE, AUTO_NAME_COHERENCE, AUTO_NAME_DAYS, AUTO_NAME_MARGIN, AUTO_NAME_MIN, AUTO_NAME_SCORE, BACKFILL_DAYS, CONF_CLIMATE, CONF_CLIMATE_ENERGY, CONF_EXTRA_LINES, CONF_FRIDGE_KWH, CONF_MEASURED, CONF_SHARED, CONF_POWER_ENTITY, DATA_DIR, DB_FILE, DOMAIN,
                     EVENTS_SENT_DAYS, PROCESS_EVERY_S, SAMPLES_KEEP_DAYS)
-from .shared import SharedPlugs
+from .shared import ON_W as SHARED_ON_W, SharedPlugs
 from .store import Store
 
 # Catégories : des appareils comptés ensemble, choisies par l'utilisateur. La première, « Électroménager »,
@@ -192,6 +192,7 @@ class Coordinator:
         self._mem: dict = {}
         self._renum: list = []               # analyse refaite : anciens numéros à reporter (voir _renumber)
         self._sub_since = 0.0                # dernier changement des prises mesurées (les veilles se remesurent après)
+        self._shared_kick = 0.0              # dernière relecture immédiate d'une prise partagée
         self._first = None
 
     # ------------------------------------------------------------ démarrage
@@ -376,7 +377,21 @@ class Coordinator:
 
     @callback
     def _on_measured(self, event: Event):
-        self.sub_now[event.data["entity_id"]] = self._num(event.data.get("new_state"))
+        eid = event.data["entity_id"]
+        before = self.sub_now.get(eid, 0.0)
+        self.sub_now[eid] = self._num(event.data.get("new_state"))
+        # une prise partagée qui démarre : on la relit tout de suite (sans attendre la minute suivante) pour dire
+        # aussitôt lequel des appareils tourne
+        if (before < SHARED_ON_W <= self.sub_now[eid] and any(p["entity"] == eid for p in self.shared.plugs)
+                and not self.shared.open.get(eid) and time.time() - self._shared_kick > 20):
+            self._shared_kick = time.time()
+            self.hass.async_create_task(self._async_shared_now())
+
+    async def _async_shared_now(self):
+        await asyncio.sleep(5)                       # que HA ait enregistré la valeur
+        await self.async_shared()
+        self.ensure_entities()
+        self.push_entities()
 
     async def _sub_at(self, times: list[float], start) -> list[float]:
         """Somme des prises mesurées à chaque instant demandé (dernière valeur connue)."""
@@ -783,14 +798,16 @@ class Coordinator:
             k["annee"] = max(k["annee"], k["mois"])        # une année plus petite que son mois
             couts.append({"nom": name, **{p: round(v * price, 2) for p, v in k.items()}, "kwh_mois": round(k["mois"], 2)})
         couts.sort(key=lambda c: -c["mois"])
-        # les programmes d'aujourd'hui sur les prises partagées (lave-linge, sèche-linge…) : le prix de chacun
+        # les derniers programmes des prises partagées (lave-linge, sèche-linge…), sur 7 jours : le prix de chacun
         uses = []
-        for r in sorted(self.shared.runs, key=lambda r: r["start"]):
+        for r in sorted(self.shared.runs, key=lambda r: r["start"], reverse=True):
             nom = r.get("name") or (r.get("guess") if (r.get("conf") or 0) >= 0.75 else None)
-            if r["start"] >= day.timestamp() and nom:
+            if r["start"] >= day.timestamp() - 6 * 86400 and nom and len(uses) < 10:
                 loc = dt_util.as_local(dt_util.utc_from_timestamp(r["start"]))
-                uses.append({"nom": nom, "debut": f"{loc.hour} h {loc.minute:02d}", "kwh": round(r["wh"] / 1000, 2),
-                             "eur": round(r["wh"] / 1000 * price, 2)})
+                d = (day.date() - loc.date()).days
+                jour = "aujourd'hui" if d == 0 else "hier" if d == 1 else f"le {loc.day:02d}/{loc.month:02d}"
+                uses.append({"nom": nom, "jour": jour, "debut": f"{loc.hour} h {loc.minute:02d}", "kwh": round(r["wh"] / 1000, 2),
+                             "eur": round(r["wh"] / 1000 * price, 2), "minutes": round((r["end"] - r["start"]) / 60)})
         self.ranking["couts"], self.ranking["utilisations"] = couts, uses
 
     async def _async_advice(self, devs, price, house):

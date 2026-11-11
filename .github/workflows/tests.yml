@@ -27,6 +27,7 @@ jobs:
           python tests/test_desinstallation.py
           python tests/test_partagee.py
           python tests/test_partagee_programmes.py
+          python tests/test_partagee_reflexe.py
           python tests/test_fil_principal.py
           python tests/test_reanalyse.py
           python tests/test_classement_zero.py

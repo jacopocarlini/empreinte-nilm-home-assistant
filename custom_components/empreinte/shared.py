@@ -21,6 +21,7 @@ HEAT_W = 1000        # une résistance qui chauffe
 MIN_WH = 20          # en dessous : pas un programme (porte qui se déverrouille, test…)
 MIN_CORE_S = 300
 SURE = 0.75          # probabilité à atteindre pour attribuer seul ; sinon « à confirmer »
+PROBABLE = 0.65      # pendant un programme : la première idée, affichée tout de suite, à confirmer
 KEEP_DAYS = 400      # programmes gardés (au-delà, leur énergie reste comptée)
 
 
@@ -173,17 +174,19 @@ def early(prof: list[int], names: list[str]) -> tuple[str | None, float]:
             return seche, 0.9                             # chauffe tout de suite, ou le tambour tourne fort avant
         if first * STEP >= 120:
             return lave, 0.9                              # tourne d'abord doucement sans chauffer (remplissage)
-        return None, 0.0
-    if len(prof) * STEP < 600:
-        return None, 0.0                                  # pas encore assez vu
+        return lave, PROBABLE
     mean = sum(prof) / len(prof)
+    if len(prof) * STEP < 600:
+        # pas encore de chauffe : une première idée, à confirmer (un lave-linge démarre doucement en s'arrêtant,
+        # un sèche-linge fait tourner son tambour fort ou démarre sa pompe à chaleur)
+        return (seche if mean >= 130 else lave), PROBABLE
     pause = sum(1 for v in prof if v < ON_W) / len(prof)
     mid = sum(1 for v in prof if 300 <= v < HEAT_W) / len(prof)
     if mid >= 0.6 and pause < 0.05:
         return seche, 0.85                                # pompe à chaleur : ~600 W sans arrêt
     if mean < 200:
         return lave, 0.85                                 # 10 min de petit moteur sans chauffer : un lavage
-    return None, 0.0
+    return (seche if mean >= 300 else lave), PROBABLE
 
 
 def classify(f: dict, names: list[str], examples: dict[str, list[dict]]) -> tuple[str | None, float]:
@@ -269,12 +272,15 @@ class SharedPlugs:
         if open_run:
             # pendant le programme : d'abord son début (chauffe tout de suite ou pas), sinon tout ce qu'on en a vu
             name, conf = early(open_run["prof"], names)
-            if name is None and open_run["f"]["D"] >= 1800:
-                name, conf = classify(open_run["f"], names, ex)
+            if conf < SURE and open_run["f"]["D"] >= 1800:
+                n2, c2 = classify(open_run["f"], names, ex)
+                if n2 is not None and c2 > conf:
+                    name, conf = n2, c2
             if len(names) == 1:
                 name, conf = names[0], 1.0
             self.open[entity] = {"start": open_run["start"], "power": open_run["prof"][-1] if open_run["prof"] else 0,
-                                 "guess": name if conf >= 0.6 else None, "conf": conf}
+                                 "guess": name if conf >= 0.6 else None, "conf": conf, "sure": conf >= SURE,
+                                 "wh": open_run["wh"]}
             # on relira depuis le début du programme en cours la prochaine fois
             self.until[entity] = open_run["start"] - 1
         else:

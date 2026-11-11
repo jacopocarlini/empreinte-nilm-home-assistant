@@ -5,6 +5,7 @@ from homeassistant.components.binary_sensor import BinarySensorDeviceClass, Bina
 
 from .const import DOMAIN
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.util import dt as dt_util
 
 from .entity import ApplianceEntity, slug
 
@@ -44,3 +45,13 @@ class SharedRunning(BinarySensorEntity):
     @property
     def is_on(self):
         return self.coord.shared.running(self.plug, self.app) is not None
+
+    @property
+    def extra_state_attributes(self):
+        o = self.coord.shared.running(self.plug, self.app)
+        if not o:
+            return {}
+        kwh, price = (o.get("wh") or 0) / 1000, self.coord.ranking.get("prix")
+        loc = dt_util.as_local(dt_util.utc_from_timestamp(o["start"]))
+        return {"certitude": round(o["conf"] * 100), "a_confirmer": not o.get("sure"), "debut": f"{loc.hour} h {loc.minute:02d}",
+                "kwh": round(kwh, 2), "eur": round(kwh * price, 2) if price else None}

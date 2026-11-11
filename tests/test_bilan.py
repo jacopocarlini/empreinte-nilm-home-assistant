@@ -91,7 +91,8 @@ couts = {c["nom"]: c for c in co.ranking.get("couts", [])}
 check("Coût de chaque appareil connu : heure, jour, mois, année", couts.get("PC") == {"nom": "PC", "heure": 2.4, "jour": 2.4, "mois": 2.4,
       "annee": 2.4, "kwh_mois": 12.0}, f"({couts.get('PC')})")
 check("… seulement les appareils connus (pas le non identifié)", "Non identifié" not in couts and len(couts) >= 2, f"({list(couts)})")
-check("Le prix de chaque programme du jour (prise partagée)", co.ranking.get("utilisations", [{}])[0].get("eur") == 0.18,
+check("Le prix de chaque programme (prise partagée), avec son jour", co.ranking.get("utilisations", [{}])[0].get("eur") == 0.18
+      and co.ranking["utilisations"][0].get("jour") == "aujourd'hui",
       f"({co.ranking.get('utilisations')})")
 co.shared.runs.clear()
 # « Classement : repartir de zéro » en cours d'heure : HA donne n'importe quoi pour un départ pas encore compilé,

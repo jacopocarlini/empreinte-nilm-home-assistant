@@ -143,8 +143,10 @@ check("Au bout de 5 min : il chauffe depuis le début, c'est le sèche-linge", s
 now = 1_900_000_000 + 50
 sp4 = S.SharedPlugs([{"entity": plug, "names": NAMES}])
 sp4.ingest(plug, [p for p in p3 if p[0] <= now], now)
-check("Dans la première minute : trop tôt pour dire lequel", sp4.open.get(plug) and sp4.open[plug]["guess"] is None,
-      f"({sp4.open.get(plug)})")
+check("Dès la première minute : une première idée, à confirmer", sp4.open.get(plug) and sp4.open[plug]["guess"] == "Sèche-linge"
+      and not sp4.open[plug]["sure"], f"({sp4.open.get(plug)})")
+check("… puis sûr dès qu'il chauffe", sp3.open[plug]["sure"])
+check("… avec l'énergie déjà consommée (pour son prix en direct)", 1000 < sp3.open[plug]["wh"] < 1600, f"({sp3.open[plug]['wh']} Wh)")
 
 # 8. Une seule prise, un seul appareil : tout lui revient
 sp5 = S.SharedPlugs([{"entity": plug, "names": ["Lave-linge"]}])

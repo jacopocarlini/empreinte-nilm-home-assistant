@@ -81,13 +81,13 @@ for truth, progs in cases.items():
             if n == truth and found is None:
                 found = m
         late[(truth, label)] = found
-ok = all(v is not None and v <= 12 for v in late.values())
+ok = all(v is not None and v <= 2 for v in late.values())          # une idée juste dès les 2 premières minutes
 bad += not ok
 print(f"{'OK   ' if ok else 'ÉCHEC'} en direct : jamais l'autre appareil ; trouvé en "
       + ", ".join(f"{v} min" if v else "—" for v in late.values()))
-slow = [k for k, v in late.items() if not v or v > 12]
+slow = [k for k, v in late.items() if not v or v > 2]
 if slow:
-    print("      pas trouvé avant 12 min :", slow)
+    print("      pas trouvé en 2 min :", slow)
 
 # Les noms en anglais (README.en) donnent les mêmes connaissances de départ
 for nom, k in (("Washing machine", "lave_linge"), ("Washer", "lave_linge"), ("Dryer", "seche_linge"), ("Tumble dryer", "seche_linge"),
