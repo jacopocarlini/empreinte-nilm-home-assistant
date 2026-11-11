@@ -180,6 +180,10 @@ stub("homeassistant.components.recorder", get_instance=lambda h: _Rec(), history
 FakeEntry.options = {**FakeEntry.options, "shared_plugs": [{"entity": plug, "names": NAMES}]}
 co = make()
 co.hass = types.SimpleNamespace(async_add_executor_job=lambda f, *a: _Rec().async_add_executor_job(f, *a))
+SID = {n: f"sensor.empreinte_prise_{'lave' if n == 'Lave-linge' else 'seche'}_linge_energie" for n in NAMES}
+for n in NAMES:                                          # leurs capteurs d'énergie, dans le tableau Énergie
+    co.entities["sh:" + co.shared.key(plug, n)] = [types.SimpleNamespace(entity_id=SID[n])]
+    co.lines.setdefault("names", {})[SID[n]] = n
 real_time = C.time.time
 C.time.time = lambda: end + 3600
 try:
@@ -188,6 +192,11 @@ try:
 finally:
     C.time.time = real_time
 check("Empreinte relit la prise dans l'historique de HA : 4 programmes", len(co.shared.runs) == 4, f"({len(co.shared.runs)})")
+ops = co.lines.get("ops", [])
+named = [r for r in co.shared.runs if r.get("name")]
+check("Chaque programme rangé est remis à ses vraies heures (pas d'un bloc à sa fin)", len(ops) == len(named) and all(
+      o["t_line"] and abs(sum(a for _, a in o["where"]) - o["k"]) < 1e-6 and min(t for t, _ in o["where"]) >= r["start"] - 1
+      for o, r in zip(ops, named)), f"({len(ops)} déplacements pour {len(named)} programmes)")
 co2 = C.Coordinator(types.SimpleNamespace(), FakeEntry())        # un redémarrage : même base, nouveau coordinateur
 co2.store = co.store
 co2._load()
@@ -195,6 +204,8 @@ check("Après un redémarrage, tout est retrouvé", len(co2.shared.runs) == 4 an
 rid = co.shared.runs[0]["id"]
 co._action({"action": "shared_label", "rid": rid, "name": "Sèche-linge"})
 check("Réponse du panneau : enregistrée", next(r for r in co.shared.runs if r["id"] == rid)["name"] == "Sèche-linge")
+check("… et ses kWh passent d'un appareil à l'autre, à ses heures", [(o["sid"], o["k"] > 0) for o in co.lines["ops"][-2:]]
+      == [(SID["Lave-linge"], False), (SID["Sèche-linge"], True)], f"({[(o['sid'], round(o['k'], 3)) for o in co.lines['ops'][-2:]]})")
 co._action({"action": "shared_dash", "key": co.shared.key(plug, "Lave-linge"), "on": True})
 pay = co._shared_payload()[0]
 check("Le panneau reçoit la prise, ses appareils et ses programmes",

@@ -44,20 +44,28 @@ def dry_reverse():    # le tambour change de sens toutes les 2 min (courte pause
     return [(60, 250)] + [(110, 2200), (10, 0)] * 36 + [(600, 260)]
 def wash_no_pause():  # moteur à variateur : pas d'arrêt franc, lavage à froid
     return [(240, 90), (3600, 140), (300, 90), (240, 500), (300, 120), (240, 550)]
+def dry_holes():     # la prise envoie des 0 en pleine chauffe (~15 % du temps), puis refroidit doucement
+    s = []
+    for _ in range(40):
+        s += [(75, 2450), (15, 0)]
+    return s + [(600, 200), (300, 35), (120, 0), (300, 40)]
+def wash_holes():    # lave-linge réaliste : 3 min de petit moteur avec arrêts, une chauffe, puis moteur et arrêts
+    return ([(25, 40), (10, 0), (30, 30), (15, 3), (40, 50), (10, 0), (35, 30)] + [(600, 1800), (300, 600)]
+            + [(120, 80), (60, 0)] * 15 + [(240, 450)])
 def dry_pac(): return [(300, 900), (6600, 640), (480, 260)]
 def dry_pac_short(): return [(200, 850), (3000, 600), (300, 250)]
 cases = {"Lave-linge": {"chaud 40°": wash(), "60° long": wash(heat=1500), "froid (sans chauffe)": wash(heat=0),
                         "chauffe tard (éco)": wash_late_heat(), "prélavage chauffé": wash(prewash_heat=True),
                         "rapide 30 min": [(120,90),(600,2000)]+[(120,160),(60,4)]*4+[(240,500)],
-                        "long démarrage moteur": [(900,120)]+wash(pre=60), "moteur continu, froid": wash_no_pause()},
+                        "long démarrage moteur": [(900,120)]+wash(pre=60), "moteur continu, froid": wash_no_pause(), "réaliste avec arrêts": wash_holes()},
          "Sèche-linge": {"résistance": dry(), "court": dry_short(), "long": dry_long(), "faible puissance": dry_lowpower(),
-                         "pompe à chaleur": dry_pac(), "PAC court": dry_pac_short(), "tambour qui change de sens": dry_reverse()}}
+                         "pompe à chaleur": dry_pac(), "PAC court": dry_pac_short(), "tambour qui change de sens": dry_reverse(), "prise qui envoie des 0": dry_holes()}}
 names = ["Lave-linge", "Sèche-linge"]; bad = 0
 for truth, progs in cases.items():
     for label, segs in progs.items():
         runs, _ = S.find_runs(curve(segs, 1_800_000_000), 1_800_000_000 + 30 * 3600)
         if len(runs) != 1: print(f"ÉCHEC {truth:12s} {label:22s} découpé en {len(runs)}"); bad += 1; continue
-        f = runs[0]["f"]; n, p = S.classify(f, names, {})
+        f = runs[0]["f"]; n, p = S.decide(f, S.early(runs[0]["prof"], names), names, {})
         ok = n == truth and p >= S.SURE
         bad += not ok
         print(f"{'OK   ' if ok else 'ÉCHEC'} {truth:12s} {label:22s} -> {n} {p:.2f}  (D {f['D']//60} min, chauffe {f['heat']}, pos {f['heat_pos']}, mid {f['mid']}, blocs {f['blocks']})")

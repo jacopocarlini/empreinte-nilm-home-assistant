@@ -140,7 +140,7 @@ def prior(kind: str, f: dict) -> float:
         mins_ok = _soft(mins, 30, 300, 40)
         # résistance : elle chauffe presque tout le temps, dès le début, et le tambour ne s'arrête pas
         resist = (_soft(f["heat"], 0.5, 1, 0.12) * (_soft(f["heat_pos"], 0.3, 0.7, 0.15) if f["heat_pos"] is not None else 0)
-                  * _soft(f.get("pause", 0), 0, 0.05, 0.04))
+                  * _soft(f.get("pause", 0), 0, 0.3, 0.1))      # (une prise envoie parfois des 0 en pleine chauffe)
         pac = _soft(f["mid"], 0.55, 1, 0.15) * _soft(f["heat"], 0, 0.15, 0.1)        # pompe à chaleur : ~600 W stables
         return mins_ok * max(resist, pac)
     if kind == "lave_vaisselle":
@@ -187,6 +187,15 @@ def early(prof: list[int], names: list[str]) -> tuple[str | None, float]:
     if mean < 200:
         return lave, 0.85                                 # 10 min de petit moteur sans chauffer : un lavage
     return (seche if mean >= 300 else lave), PROBABLE
+
+
+def decide(f: dict, start: tuple, names: list[str], examples: dict[str, list[dict]]) -> tuple[str | None, float]:
+    """Le programme terminé : son début (chauffe tout de suite ou pas) est l'indice le plus sûr ; sinon tout le programme."""
+    name, conf = classify(f, names, examples)
+    s_name, s_conf = start if start else (None, 0.0)
+    if s_name and s_conf >= SURE:
+        return s_name, round(max(s_conf, conf) if s_name == name else s_conf, 2)
+    return name, conf
 
 
 def classify(f: dict, names: list[str], examples: dict[str, list[dict]]) -> tuple[str | None, float]:
@@ -264,10 +273,11 @@ class SharedPlugs:
         for r in done:
             if (entity, round(r["start"])) in seen:
                 continue
-            name, conf = classify(r["f"], names, ex)
+            name, conf = decide(r["f"], early(r["prof"], names), names, ex)
             self.counter += 1
             self.runs.append({"id": f"p{self.counter}", "plug": entity, "start": r["start"], "end": r["end"], "wh": r["wh"],
-                              "f": r["f"], "name": name if conf >= SURE else None, "guess": name, "conf": conf, "user": False})
+                              "f": r["f"], "name": name if conf >= SURE else None, "guess": name, "conf": conf, "user": False,
+                              "start_guess": list(early(r["prof"], names))})
             new += 1
         if open_run:
             # pendant le programme : d'abord son début (chauffe tout de suite ou pas), sinon tout ce qu'on en a vu
@@ -318,7 +328,7 @@ class SharedPlugs:
         for r in self.runs:
             if r["plug"] != entity or r.get("user"):
                 continue
-            name, conf = classify(r["f"], names, ex)
+            name, conf = decide(r["f"], tuple(r.get("start_guess") or (None, 0.0)), names, ex)
             r["guess"], r["conf"] = name, conf
             r["name"] = name if conf >= SURE else None
 

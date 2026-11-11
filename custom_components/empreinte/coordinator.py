@@ -193,6 +193,7 @@ class Coordinator:
         self._renum: list = []               # analyse refaite : anciens numéros à reporter (voir _renumber)
         self._sub_since = 0.0                # dernier changement des prises mesurées (les veilles se remesurent après)
         self._shared_kick = 0.0              # dernière relecture immédiate d'une prise partagée
+        self._shared_rechecked: set = set()  # prises partagées dont les programmes ont été relus depuis le démarrage
         self._first = None
 
     # ------------------------------------------------------------ démarrage
@@ -487,17 +488,41 @@ class Coordinator:
                     except (TypeError, ValueError):
                         continue                              # indisponible : la valeur d'avant reste valable
                 async with self.lock:
+                    before = {r["id"]: r.get("name") for r in self.shared.runs}
+                    if eid not in self._shared_rechecked:
+                        # au démarrage : les programmes pas encore confirmés sont relus avec les règles actuelles
+                        self._shared_rechecked.add(eid)
+                        self.shared.reclassify(eid)
                     n = self.shared.ingest(eid, pts, now)
+                    self._shared_moves(before)
                 if n:
                     _LOGGER.info("Empreinte : %s programme(s) de la prise %s rangé(s)", n, eid)
             await self.hass.async_add_executor_job(self.store.set_meta, "shared", self.shared.state())
         except Exception:  # une prise partagée ne doit jamais bloquer le reste
             _LOGGER.exception("Empreinte : impossible de lire une prise partagée")
 
+    def _shared_moves(self, before: dict):
+        """Un programme d'une prise partagée est compté d'un coup quand on sait lequel des appareils a tourné (à sa fin,
+        ou quand on le corrige). Ses kWh sont remis à ses vraies heures dans les statistiques (comme pour le reste)."""
+        for r in self.shared.runs:
+            old, new = before.get(r["id"]), r.get("name")
+            if old == new:
+                continue
+            k = r["wh"] / 1000
+            where = self._spread(r["start"], r["end"], k)
+            for name, sign in ((old, -1), (new, 1)):
+                if not name:
+                    continue
+                sid = next((e for e in self.entity_ids("sh:" + self.shared.key(r["plug"], name)) if e.endswith("_energie")), None)
+                if sid:
+                    self._rest_op(sid, sign * k, [(t0, sign * a) for t0, a in where], t_line=time.time())
+
     def _shared_action(self, msg):
         a = msg["action"]
         if a == "shared_label":
+            before = {r["id"]: r.get("name") for r in self.shared.runs}
             self.shared.label(msg["rid"], msg.get("name") or None)
+            self._shared_moves(before)
         elif a == "shared_dash":
             key = msg["key"]
             if key not in {self.shared.key(e, n) for e, n in self.shared.appliances()}:
