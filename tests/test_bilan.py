@@ -96,6 +96,9 @@ check("Le prix de chaque programme (prise partagée), avec son jour", co.ranking
           __import__("time").time() - 600)).date() == _C.dt_util.now().date() else "hier"),
       f"({co.ranking.get('utilisations')})")
 co.shared.runs.clear()
+h = co.ranking.get("heures") or []
+check("Heure par heure : la consommation moyenne de chaque heure de la journée", len(h) == 24 and sum(1 for v in h if v) == 1
+      and max(v or 0 for v in h) == 120000, f"({[v for v in h if v]})")
 # « Classement : repartir de zéro » en cours d'heure : HA donne n'importe quoi pour un départ pas encore compilé,
 # le classement additionne donc lui-même les créneaux (5 min puis heures) depuis la remise à zéro.
 _S = sys.modules["homeassistant.components.recorder.statistics"]

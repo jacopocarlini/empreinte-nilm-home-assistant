@@ -842,6 +842,22 @@ class Coordinator:
                 uses.append({"nom": nom, "jour": jour, "debut": f"{loc.hour} h {loc.minute:02d}", "kwh": round(r["wh"] / 1000, 2),
                              "eur": round(r["wh"] / 1000 * price, 2), "minutes": round((r["end"] - r["start"]) / 60)})
         self.ranking["couts"], self.ranking["utilisations"] = couts, uses
+        # Heure par heure, ce mois-ci : ce que la maison tire en moyenne à chaque heure de la journée (Wh), pour voir
+        # quand on consomme le plus (et ce qu'un panneau solaire couvrirait)
+        heures = None
+        if house:
+            try:
+                rows_h = (await rec.async_add_executor_job(
+                    statistics_during_period, self.hass, start, None, {house}, "hour", None, {"change"})).get(house) or []
+                tot, n = [0.0] * 24, [0] * 24
+                for x in rows_h:
+                    h = dt_util.as_local(dt_util.utc_from_timestamp(_ts(x["start"]))).hour
+                    tot[h] += max(x.get("change") or 0, 0)
+                    n[h] += 1
+                heures = [round(tot[h] / n[h] * 1000) if n[h] else None for h in range(24)]
+            except Exception:  # une statistique absente ne doit rien bloquer
+                heures = None
+        self.ranking["heures"] = heures
 
     async def _async_advice(self, devs, price, house):
         """Les économies possibles, calculées sur la vraie consommation de la maison, et ce mois comparé au précédent.
