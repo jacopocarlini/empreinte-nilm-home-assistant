@@ -738,7 +738,7 @@ function pageGroupe(gid) {
   <a class="back" href="#/decouvertes">${icon("left")} Découvertes</a>
   <div class="ghead"><div class="gicon" style="background:${col(g)}">${icon(gicon(g))}</div>
     <div><h1>${esc(gname(g))} ${pill}</h1><p class="sub">${g ? `Groupe ${g.letter} · ${st.n} utilisation${st.n > 1 ? "s" : ""}${st.last ? " · dernière : " + fmtWhen(st.last).toLowerCase() : ""}` : "Utilisations que le programme n'a pas encore su ranger"}</p></div>
-    ${g ? `<div class="acts"><button class="btn" id="b-ren">${icon("edit")} ${g.name ? "Renommer" : "Nommer"}</button><button class="btn" id="b-mer">${icon("merge")} Fusionner</button><button class="btn" id="b-spl">${icon("split")} Séparer</button>${g.status !== "valide" ? `<button class="btn primary" id="b-val">${icon("check")} Valider</button>` : ""}</div>` : ""}
+    ${g ? `<div class="acts"><button class="btn" id="b-ren">${icon("edit")} ${g.name ? "Renommer" : "Nommer"}</button><button class="btn" id="b-mer">${icon("merge")} Fusionner</button><button class="btn" id="b-spl">${icon("split")} Séparer</button>${g.name ? `<button class="btn" id="b-plug" title="Il est maintenant sur une prise connectée mesurée : Empreinte ne le cherche plus sur la courbe">${g.mesure ? "Plus sur une prise" : "Mesuré par une prise"}</button>` : ""}${g.status !== "valide" ? `<button class="btn primary" id="b-val">${icon("check")} Valider</button>` : ""}</div>` : ""}
   </div>
   <div class="stack" style="margin-top:18px">
     ${hyp ? `<div class="hyp"><div class="q"><b>Hypothèse : ça ressemble à ${esc(hyp.toLowerCase())}</b> <span class="muted">(${Math.round((g.hyp_score || 0) * 100)} %)</span><ul>${hypReasons(g, st).map(r => `<li>${esc(r)}</li>`).join("")}</ul></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="b-yes">${icon("check")} Oui, c'est ça</button><button class="btn" id="b-no">Non, c'est…</button></div></div>` : ""}
@@ -824,6 +824,7 @@ function mountGroupe(gid, q) {
     $("#b-spl").onclick = () => splitModal(gid);
     if ($("#b-spl2")) $("#b-spl2").onclick = () => splitModal(gid);
     if ($("#b-val")) $("#b-val").onclick = () => validateModal(gid);
+    if ($("#b-plug")) $("#b-plug").onclick = async () => applyState(await call({ type: "empreinte/action", action: "measured", gid, on: !g.mesure }));
     if ($("#b-yes")) $("#b-yes").onclick = () => confirmGroup(gid, hypLabel(g));
     if ($("#b-ok")) $("#b-ok").onclick = () => confirmGroup(gid);
     if ($("#b-no")) $("#b-no").onclick = () => renameModal(gid);

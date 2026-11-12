@@ -2031,8 +2031,11 @@ class Coordinator:
                 by.setdefault(e.gid, []).append(e)
         # Le centre d'un groupe vient des utilisations que l'utilisateur a confirmées, dès qu'il y en a 2.
         self.cents = {}
+        # un appareil désormais mesuré par une prise (bouton « Mesuré par une prise », ou un appareil d'une prise
+        # partagée) n'est plus cherché sur la courbe : ni proposé, ni rangé ; son historique reste
+        on_plug = {n for _, n in self.shared.appliances()}
         for gid, mem in by.items():
-            if gid in self.groups:
+            if gid in self.groups and not self.groups[gid].get("mesure") and self.groups[gid].get("name") not in on_plug:
                 sure = [e for e in mem if e.pinned and e.id not in self.doubts]
                 # « pas sûr » ou seulement probable : on n'apprend pas dessus
                 clean = [e for e in mem if e.id not in self.doubts and not e.probable] or mem
@@ -2335,6 +2338,8 @@ class Coordinator:
             self.groups[gid]["status"] = "valide"
             self.groups[gid]["auto"] = False
             self.groups[gid]["energy_dash"] = True
+        elif a == "measured":
+            self.groups[gid]["mesure"] = bool(msg.get("on"))
         elif a == "delete":
             for e in self.evs:
                 if e.gid == gid:
