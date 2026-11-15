@@ -282,6 +282,8 @@ class Coordinator:
         if dups:
             self.store.delete_events(dups)
             _LOGGER.info("Empreinte : %s utilisation(s) en double supprimée(s)", len(dups))
+        if not self.store.get_meta("lag_v1"):
+            self._drop_lag_ghosts()
         if not self.store.get_meta("cuts_v1"):
             self._fix_cuts()
         if not self.store.get_meta("spikes_v1"):
@@ -1231,8 +1233,11 @@ class Coordinator:
         if len(rows) < 2:
             return
         ts = [r[0] for r in rows]
-        ps = [r[1] - r[2] for r in rows]          # les prises mesurées (PC…) ne comptent pas
+        # les prises mesurées (PC…) ne comptent pas ; leur décalage avec le compteur est corrigé
+        ps = engine.realign(ts, [r[1] for r in rows], [r[2] for r in rows])
         found, open_start = engine.segment(ts, ps)
+        # une montée lente pendant que la clim tourne : c'est elle qui monte en puissance, pas un appareil
+        found = [e for e in found if not (e.get("creep") and e["start"] <= self._clim_until)]
         self.running_parts = [x for x in (self._live_parts(ts, ps, open_start) if open_start else [])
                               if not self._is_clim(x["start"], x["p"])]
         self._auto_track()
@@ -1925,7 +1930,14 @@ class Coordinator:
                 keep, other = (a, b) if (a.pinned, -len(ra["prof"])) >= (b.pinned, -len(rb["prof"])) else (b, a)
                 rk, ro = self.rows[keep.id], self.rows[other.id]
                 if self._both_real(rk, ro):
-                    continue                    # le compteur montre bien les deux en même temps : rien en double
+                    # le compteur montre bien deux consommations en même temps : ce sont deux appareils, et un appareil
+                    # ne tourne pas deux fois à la fois. Celle qui n'est pas confirmée perd ce nom (à trier, avec une
+                    # proposition) ; si les deux sont confirmées, c'est l'utilisateur qui a raison
+                    if not other.pinned:
+                        other.excluded.add(other.gid)
+                        other.gid = None
+                        fixed += 1
+                    continue
                 rest = list(ro["prof"])
                 for k in range(len(rest)):
                     j = round((ro["start"] + k * engine.STEP - rk["start"]) / engine.STEP)
@@ -1950,6 +1962,31 @@ class Coordinator:
                 self.rows[other.id] = {**ro, "start": s0, "end": s0 + (kb - ka) * engine.STEP, "prof": rest[ka:kb]}
                 self.store.update_event(other.id, s0, s0 + (kb - ka) * engine.STEP, rest[ka:kb], f)
         return fixed
+
+    def _drop_lag_ghosts(self):
+        """Une fois : retire les utilisations de quelques secondes qui n'étaient que le décalage entre une prise
+        mesurée et le compteur (la prise qui signale un changement quelques secondes après lui)."""
+        ghosts = []
+        for e in self.evs:
+            r = self.rows[e.id]
+            if e.pinned or r["end"] - r["start"] > engine.LAG_S + engine.STEP:
+                continue
+            rows = self.store.samples(r["start"] - 120, r["end"] + 120)
+            if len(rows) < 3 or not any(abs(rows[k][2] - rows[k - 1][2]) >= engine.EDGE_W for k in range(1, len(rows))):
+                continue
+            ts = [x[0] for x in rows]
+            res = engine.realign(ts, [x[1] for x in rows], [x[2] for x in rows])
+            inside = [v for t, v in zip(ts, res) if r["start"] - 1 <= t < r["end"]]
+            if inside and max(inside) - r["base"] <= engine.ON_W:
+                ghosts.append(e)
+        for e in ghosts:
+            self.store.delete_events([e.id])
+            self.evs.remove(e)
+            del self.rows[e.id]
+            self.hints.pop(e.id, None)
+            self.doubts.discard(e.id)
+        self.store.set_meta("lag_v1", True)
+        _LOGGER.info("Empreinte : %s fausse(s) utilisation(s) due(s) au décalage d'une prise retirée(s)", len(ghosts))
 
     def _both_real(self, r1, r2) -> bool:
         """Deux utilisations qui se chevauchent : le compteur montrait-il vraiment les deux en même temps ?
@@ -2009,7 +2046,7 @@ class Coordinator:
         for e in self.evs:
             if "spike" not in e.f:                    # (utilisations enregistrées avant cette mesure)
                 e.f["spike"] = engine.start_spike(self.rows[e.id]["prof"])
-            if e.pinned and e.id not in self.doubts and e.gid and self.groups.get(e.gid, {}).get("name"):
+            if e.pinned and e.id not in self.doubts and e.gid and self.groups.get(e.gid, {}).get("name") and not self._on_plug(e.gid):
                 examples.setdefault(e.gid, []).append(e.f)
         engine.assign(self.evs, self.cents, examples, {gid: self.cat_of(gid) or gid for gid in examples})
         self._recompute()
@@ -2033,9 +2070,8 @@ class Coordinator:
         self.cents = {}
         # un appareil désormais mesuré par une prise (bouton « Mesuré par une prise », ou un appareil d'une prise
         # partagée) n'est plus cherché sur la courbe : ni proposé, ni rangé ; son historique reste
-        on_plug = {n for _, n in self.shared.appliances()}
         for gid, mem in by.items():
-            if gid in self.groups and not self.groups[gid].get("mesure") and self.groups[gid].get("name") not in on_plug:
+            if gid in self.groups and not self._on_plug(gid):
                 sure = [e for e in mem if e.pinned and e.id not in self.doubts]
                 # « pas sûr » ou seulement probable : on n'apprend pas dessus
                 clean = [e for e in mem if e.id not in self.doubts and not e.probable] or mem
@@ -2508,6 +2544,12 @@ class Coordinator:
                        "measured": [{"entity": m, "name": (self.hass.states.get(m).name if self.hass.states.get(m) else m),
                                      "power": round(self.sub_now.get(m, 0))} for m in self.measured]},
         }
+
+    def _on_plug(self, gid) -> bool:
+        """Cet appareil est désormais mesuré par une prise (bouton « Mesuré par une prise », ou un appareil d'une prise
+        partagée) : il n'est plus cherché sur la courbe, par aucun moyen (ni centre, ni exemples)."""
+        g = self.groups.get(gid) or {}
+        return bool(g.get("mesure")) or g.get("name") in {n for _, n in self.shared.appliances()}
 
     def _guess_names(self, e) -> list[str]:
         """Pas reconnu : les 2 appareils nommés les plus proches, à proposer en un clic (« Cafetière ? Micro-ondes ? »).

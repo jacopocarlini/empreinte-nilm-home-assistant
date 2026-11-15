@@ -42,6 +42,57 @@ def quantile(vals, q):
     return s[min(len(s) - 1, int(q * len(s)))]
 
 
+LAG_S = 30           # une prise et le compteur peuvent signaler le même changement jusqu'à 30 s d'écart
+
+
+def realign(ts: list[float], ps: list[float], subs: list[float]) -> list[float]:
+    """Courbe du compteur moins les prises mesurées, en tenant compte de leur décalage.
+
+    Le compteur et une prise ne signalent pas un même changement au même instant (quelques secondes, parfois
+    20 s d'écart). Sans correction, la différence montre un faux appareil pendant ces secondes-là : par exemple
+    la résistance d'un lave-linge qui se rallume, vue par le compteur 8 s avant la prise. Quand la prise saute
+    d'une valeur et que la différence avait sauté d'autant juste avant (ou saute d'autant juste après),
+    c'est le même changement : on le remet au même instant des deux côtés.
+    """
+    out = [p - s for p, s in zip(ps, subs)]
+    n = len(out)
+    for k in range(1, n):
+        ds = subs[k] - subs[k - 1]
+        if abs(ds) < EDGE_W:
+            continue
+        tol = max(150.0, 0.3 * abs(ds))
+        done = False
+        # la prise en retard : la différence a sauté d'autant un peu avant (ou de plus : un autre appareil a démarré
+        # en même temps)
+        j = k - 1
+        while j >= 1 and ts[k] - ts[j] <= LAG_S:
+            dr = out[j] - out[j - 1]
+            if dr * ds > 0 and (abs(dr - ds) <= tol or abs(dr) > abs(ds)):
+                for m in range(j, k):
+                    out[m] -= ds
+                done = True
+                break
+            j -= 1
+        if done:
+            continue
+        # la prise en avance : la différence saute à l'envers maintenant, puis se rattrape un peu après
+        dr = out[k] - out[k - 1]
+        if dr * ds < 0 and abs(dr + ds) <= tol:
+            j = k + 1
+            while j < n and ts[j] - ts[k] <= LAG_S:
+                dr2 = out[j] - out[j - 1]
+                if dr2 * ds > 0 and abs(dr2 - ds) <= tol:
+                    for m in range(k, j):
+                        out[m] += ds
+                    break
+                j += 1
+    return out
+
+
+CREEP_S = 90         # une montée en plusieurs petits paliers qui tient 90 s au-dessus de ON_W ouvre un événement
+CREEP_OFF_FRAC = 0.6  # … et se termine sous 60 % de son pic
+
+
 def segment(ts: list[float], ps: list[float]):
     """Découpe la courbe en événements.
 
@@ -57,12 +108,16 @@ def segment(ts: list[float], ps: list[float]):
     peak_ev = 0.0
     prev_t = None
     rearm = None                 # après une coupure : on n'ouvre rien avant cet instant
+    run_i = None                 # début d'une montée lente (au-dessus du fond, sans saut assez franc)
+    creep = False
 
     def close(i_next):
         t0 = ts[i_start]
         t1 = ts[i_next] if i_next is not None else ts[last_above] + STEP
-        events.append({"start": t0, "end": t1, "base": base_ev,
-                       "prof": profile(ts, ps, i_start, t0, t1, base_ev)})
+        ev = {"start": t0, "end": t1, "base": base_ev, "prof": profile(ts, ps, i_start, t0, t1, base_ev)}
+        if creep:
+            ev["creep"] = True
+        events.append(ev)
 
     for i, (t, p) in enumerate(zip(ts, ps)):
         if prev_t is not None and t - prev_t > CUT_S:
@@ -71,7 +126,7 @@ def segment(ts: list[float], ps: list[float]):
             if i_start is not None:
                 close(None)
                 i_start = None
-            quiet, base, rearm = deque(), None, t + REARM_S
+            quiet, base, rearm, run_i = deque(), None, t + REARM_S, None
         prev_t = t
         if rearm is not None and t < rearm:
             quiet.append((t, p))
@@ -87,10 +142,29 @@ def segment(ts: list[float], ps: list[float]):
                 just_before = [q[1] for q in quiet if q[0] >= t - PRE_S] or ([quiet[-1][1]] if quiet else [])
                 base_ev = max(base, engine_median(just_before)) if just_before else base
                 if p - base_ev <= ON_W:
+                    # Pas de saut franc, mais la courbe est déjà bien au-dessus du fond : une plaque qu'on monte
+                    # cran par cran, ou deux petits appareils l'un après l'autre. Si ça tient CREEP_S, c'est
+                    # un appareil, compté depuis le début de la montée.
+                    if run_i is None:
+                        run_i = i
+                    # (un appareil à thermostat qui se rallume n'est pas une montée : rien de gros juste avant)
+                    if (t - ts[run_i] >= CREEP_S
+                            and engine_median(ps[run_i:i + 1]) - base > ON_W
+                            and all(q[1] - base <= ON_W for q in quiet if ts[run_i] - PRE_S <= q[0] < ts[run_i])):
+                        i_start, last_above, base_ev = run_i, i, base
+                        peak_ev = max(ps[run_i:i + 1]) - base_ev
+                        creep, run_i = True, None
+                        continue
                     quiet.append((t, p))
                     continue
-                i_start, last_above, peak_ev = i, i, p - base_ev
+                run_i = None
+                i_start, last_above, peak_ev, creep = i, i, p - base_ev, False
                 continue
+            if p - base > OFF_W:
+                if run_i is None:
+                    run_i = i
+            else:
+                run_i = None
             quiet.append((t, p))
             while quiet and quiet[0][0] < t - BASE_WIN_S:
                 quiet.popleft()
@@ -99,7 +173,9 @@ def segment(ts: list[float], ps: list[float]):
             # L'appareil est éteint quand la courbe redescend franchement : sous OFF_W, ou sous un tiers
             # de son pic (un petit appareil allumé entre-temps ne doit pas prolonger l'utilisation).
             peak_ev = max(peak_ev, p - base_ev)
-            if p - base_ev > max(OFF_W, OFF_FRAC * peak_ev):
+            # (une montée lente se compte depuis le fond : elle s'arrête plus tôt, pour ne pas garder un petit appareil
+            # resté allumé après elle)
+            if p - base_ev > max(OFF_W, (CREEP_OFF_FRAC if creep else OFF_FRAC) * peak_ev):
                 if t - ts[i_start] > MAX_EVENT_S:
                     close(i)
                     i_start, last_above = i, i
@@ -107,7 +183,7 @@ def segment(ts: list[float], ps: list[float]):
                     last_above = i
             elif t - ts[last_above] > GAP_S:
                 close(last_above + 1)
-                i_start = None
+                i_start, run_i, creep = None, None, False
                 quiet = deque(q for q in quiet if q[0] >= t - BASE_WIN_S)
                 quiet.append((t, p))
                 base = quantile([q[1] for q in quiet], 0.2)
