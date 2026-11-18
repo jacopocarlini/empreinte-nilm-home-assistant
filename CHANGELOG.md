@@ -1,5 +1,15 @@
 # Nouveautés
 
+## 1.3.0
+
+- **Prises partagées, en direct** : dès que la prise démarre, Empreinte la relit tout de suite et donne une première idée (« Lave-linge ? »), puis devient sûr dès qu'il voit la chauffe (un sèche-linge chauffe tout de suite, un lave-linge tourne d'abord sans chauffer). Le capteur « en marche » donne la certitude, l'heure de début, les kWh et le **prix depuis le début** du programme.
+- Prises partagées : à la fin, le début du programme décide quand il est clair ; les prises qui envoient des 0 en pleine chauffe ne trompent plus la reconnaissance. Chaque programme rangé est **remis à ses vraies heures** dans les statistiques (plus d'énergie d'un bloc à sa fin), même juste après un redémarrage, et le classement et les coûts sont recalculés aussitôt.
+- Les **derniers programmes** (7 jours) avec leur durée, leurs kWh et leur prix : attribut `utilisations` du classement.
+- **Heure par heure** : la consommation moyenne de chaque heure de la journée, ce mois-ci (attribut `heures` du classement), pour voir quand la maison consomme le plus.
+- Bouton **Mesuré par une prise** (fiche d'un appareil) : un appareil désormais branché sur une prise mesurée (le micro-ondes…) n'est plus cherché ni proposé sur la courbe. Les appareils d'une prise partagée le sont d'office.
+- Un appareil ne tourne pas deux fois à la fois : deux utilisations rangées sous le même nom qui se chevauchent alors que le compteur montre bien deux consommations, celle qui n'est pas confirmée redevient « à trier ».
+- Prises mesurées et compteur recalés quand ils signalent un même changement à quelques secondes d'écart (plus de faux appareil au démarrage d'un appareil sur prise) ; un appareil qui monte en puissance cran par cran est suivi.
+
 ## 1.2.0
 
 - **Ce que coûte chaque appareil** : le classement du mois (`sensor.empreinte_bilan_classement`) donne aussi, pour chaque appareil connu, son coût sur la dernière heure, aujourd'hui, ce mois-ci et cette année (attribut `couts`), et le prix de chaque programme du jour sur une prise partagée (attribut `utilisations`).

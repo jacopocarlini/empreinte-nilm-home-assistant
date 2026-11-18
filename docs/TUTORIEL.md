@@ -96,6 +96,8 @@ Si le tableau Énergie connaît la consommation du réseau et le prix du kWh, Em
 | `sensor.empreinte_bilan_frigo_energie` | Le frigo estimé (si réglé) |
 | `sensor.empreinte_bilan_classement` | Le classement du mois, ligne par ligne, et ce que coûte chaque appareil sur l'heure, le jour, le mois et l'année (en attributs) |
 | `button.empreinte_classement_repartir_de_zero` | Fait repartir le classement de zéro (après de nouvelles prises, par exemple) |
+
+Dans les attributs du classement : `couts` (chaque appareil connu sur la dernière heure, le jour, le mois, l'année), `utilisations` (les programmes des prises partagées sur 7 jours, avec leur prix) et `heures` (la consommation moyenne de chaque heure de la journée, ce mois-ci). Sur une prise partagée, `binary_sensor.empreinte_prise_<appareil>` donne pendant le programme : `certitude`, `a_confirmer`, `debut`, `kwh` et `eur` (le prix depuis le début).
 | `sensor.empreinte_bilan_conseils` | Les économies possibles en € par an, avec le détail en attributs |
 | `sensor.empreinte_bilan_conseil_1` à `_8` | Chaque conseil, du plus rentable au moins rentable |
 | `sensor.empreinte_bilan_evolution` | Ce mois-ci comparé au précédent, en % par jour |
