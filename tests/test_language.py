@@ -40,6 +40,7 @@ for name in ("EntitySelector", "EntitySelectorConfig", "NumberSelector", "Number
 selector.NumberSelectorMode = types.SimpleNamespace(BOX="box")
 sys.modules["homeassistant.helpers"].selector = selector
 from empreinte import config_flow as F  # noqa: E402
+from empreinte.text import display_text  # noqa: E402
 
 
 def test_schema_and_save_preserves_shared_plugs():
@@ -81,6 +82,70 @@ def test_translation_keys():
         with open(os.path.join(folder, "translations", language + ".json"), encoding="utf-8") as f:
             got = keys(json.load(f))
         assert got == expected, (language, expected - got, got - expected)
+
+
+def test_display_labels_preserve_user_names():
+    coord = types.SimpleNamespace(language="it")
+    assert display_text(coord, "puissance") == "potenza"
+    assert display_text(coord, "énergie") == "energia"
+    assert display_text(coord, "Lavatrice personale") == "Lavatrice personale"
+    coord.language = "en"
+    assert display_text(coord, "en marche") == "running"
+    assert display_text(coord, "Non identifié") == "Unidentified"
+    coord.language = "fr"
+    assert display_text(coord, "Non identifié") == "Non identifié"
+
+
+def test_sensor_names_keep_identifiers():
+    class Entity:
+        pass
+
+    class SensorEntity(Entity):
+        pass
+
+    class BinarySensorEntity(Entity):
+        pass
+
+    class ButtonEntity(Entity):
+        pass
+
+    stub("homeassistant.helpers.entity", Entity=Entity)
+    sys.modules["homeassistant.helpers.device_registry"].DeviceInfo = lambda **kwargs: kwargs
+    stub("homeassistant.components.sensor", SensorEntity=SensorEntity,
+         SensorDeviceClass=types.SimpleNamespace(POWER="power", ENERGY="energy", MONETARY="money"),
+         SensorStateClass=types.SimpleNamespace(MEASUREMENT="measurement", TOTAL="total", TOTAL_INCREASING="total_increasing"))
+    stub("homeassistant.components.binary_sensor", BinarySensorEntity=BinarySensorEntity,
+         BinarySensorDeviceClass=types.SimpleNamespace(RUNNING="running"))
+    stub("homeassistant.components.button", ButtonEntity=ButtonEntity)
+    stub("homeassistant.const", UnitOfEnergy=types.SimpleNamespace(KILO_WATT_HOUR="kWh"),
+         UnitOfPower=types.SimpleNamespace(WATT="W"))
+    from empreinte.sensor import PowerSensor, RestEnergy, LineCost, SharedEnergy
+    from empreinte.binary_sensor import RunningSensor, SharedRunning
+    from empreinte.button import RankingReset
+
+    coord = types.SimpleNamespace(
+        language="it", groups={"g1": {"name": "Lavatrice personale"}},
+        lines={"names": {"sensor.pc": "Mon PC"}},
+        shared=types.SimpleNamespace(key=lambda plug, name: plug + name),
+    )
+    power = PowerSensor(coord, "g1")
+    running = RunningSensor(coord, "g1")
+    rest = RestEnergy(coord)
+    line = LineCost(coord, "sensor.pc", "Mon PC")
+    shared = SharedEnergy(coord, "sensor.plug", "Lavatrice personale")
+    shared_running = SharedRunning(coord, "sensor.plug", "Lavatrice personale")
+    button = RankingReset(coord)
+    assert power.name == "Lavatrice personale potenza"
+    assert running.name == "Lavatrice personale in funzione"
+    assert rest.name == "Non identificato"
+    assert line.name == "Mon PC costo"
+    assert shared.name == "energia" and shared_running.name == "in funzione"
+    assert button.name == "Azzera classifica"
+    ids = [(x.entity_id, x._attr_unique_id) for x in (power, running, rest, line, shared, shared_running, button)]
+    coord.language = "en"
+    assert power.name == "Lavatrice personale power" and rest.name == "Unidentified"
+    assert line.name == "Mon PC cost" and shared.name == "energy" and shared_running.name == "running"
+    assert ids == [(x.entity_id, x._attr_unique_id) for x in (power, running, rest, line, shared, shared_running, button)]
 
 
 if __name__ == "__main__":

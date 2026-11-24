@@ -8,6 +8,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DOMAIN
 from .entity import ApplianceEntity, slug
+from .text import display_text
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -67,7 +68,7 @@ class _Cat(SensorEntity):
 
     @property
     def name(self):
-        return self._label
+        return display_text(self.coord, self._label)
 
     @property
     def available(self):
@@ -116,6 +117,10 @@ class _Line(SensorEntity):
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, "bilan")}, name="Bilan par jour",
                                             manufacturer="Empreinte", model="Bilan par jour")
 
+    @property
+    def name(self):
+        return display_text(self.coord, self._attr_name)
+
 
 class RestEnergy(_Line):
     _attr_device_class = SensorDeviceClass.ENERGY
@@ -158,7 +163,7 @@ class LineCost(_Line):
     @property
     def name(self):
         # suit le nom de la ligne dans le tableau Énergie (une catégorie renommée garde le même capteur)
-        return f"{self.coord.lines.get('names', {}).get(self.sid, self._attr_name[:-5])} coût"
+        return f"{self.coord.lines.get('names', {}).get(self.sid, self._attr_name[:-5])} {display_text(self.coord, 'coût')}"
 
     @property
     def native_value(self):
@@ -338,6 +343,11 @@ class AdviceTip(_Line):
         self.rank = rank
         super().__init__(coord, f"conseil_{rank}", f"Conseil n°{rank}")
 
+    @property
+    def name(self):
+        prefix = {"en": "Tip", "it": "Consiglio"}.get(getattr(self.coord, "language", "fr"), "Conseil")
+        return f"{prefix} n°{self.rank}"
+
     def _tip(self):
         tips = self.coord.advice.get("conseils", [])
         return tips[self.rank - 1] if len(tips) >= self.rank else None
@@ -386,6 +396,10 @@ class _Shared:
         self.entity_id = f"sensor.empreinte_prise_{slug(name)}_{suffix}"
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, "sh:" + coord.shared.key(plug, name))}, name=name,
                                             manufacturer="Empreinte", model="Prise partagée")
+
+    @property
+    def name(self):
+        return display_text(self.coord, self._attr_name)
 
 
 class SharedPower(_Shared, SensorEntity):

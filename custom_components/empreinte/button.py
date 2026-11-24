@@ -5,6 +5,7 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DOMAIN
+from .text import display_text
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -24,6 +25,10 @@ class RankingReset(ButtonEntity):
         self.entity_id = "button.empreinte_classement_repartir_de_zero"
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, "bilan")}, name="Bilan par jour",
                                             manufacturer="Empreinte", model="Bilan par jour")
+
+    @property
+    def name(self):
+        return display_text(self.coord, self._attr_name)
 
     async def async_press(self) -> None:
         await self.coord.async_action({"action": "ranking_reset"})

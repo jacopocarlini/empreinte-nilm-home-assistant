@@ -1,6 +1,7 @@
 // Habitudes : vérifie qu'une habitude ne mélange jamais deux appareils nommés différemment.
 // Lancer :  node tests/test_habits.mjs
-import { findHabits } from "../custom_components/empreinte/frontend/habits.js";
+import { findHabits, habitHints, periodOf } from "../custom_components/empreinte/frontend/habits.js";
+import assert from "node:assert/strict";
 
 const DAY = 864e5, T0 = new Date(2026, 9, 20).getTime();
 const at = (d, h, m) => T0 + d * DAY + (h * 60 + m) * 60e3;
@@ -34,5 +35,30 @@ hs = findHabits(evs, dayOf, 3, named);
 check("Deux appareils nommés à la même heure donnent deux habitudes distinctes",
   hs.length === 2 && hs.every(h => h.ids.every(id => evs.find(e => e.id === id).gid === h.gid)), `(${hs.map(h => h.gid)})`);
 
+for (const [hour, fr, en, it] of [
+  [0, "la nuit", "at night", "di notte"],
+  [5, "le matin", "in the morning", "di mattina"],
+  [10.5, "vers midi", "around midday", "verso mezzogiorno"],
+  [14.5, "l'après-midi", "in the afternoon", "di pomeriggio"],
+  [18, "le soir", "in the evening", "di sera"],
+  [22, "en fin de soirée", "late in the evening", "in tarda serata"],
+]) {
+  assert.equal(periodOf(hour), fr);
+  assert.equal(periodOf(hour, "en"), en);
+  assert.equal(periodOf(hour, "it"), it);
+}
+const hintCases = [
+  [{ hour: 7, p: 2000, dur: 120 }, ["bouilloire"], ["kettle"], ["bollitore"]],
+  [{ hour: 7, p: 1200, dur: 120 }, ["machine à café", "sèche-cheveux", "grille-pain"], ["coffee maker", "hair dryer", "toaster"], ["macchina del caffè", "asciugacapelli", "tostapane"]],
+  [{ hour: 12, p: 1500, dur: 600 }, ["micro-ondes", "plaques de cuisson", "four"], ["microwave", "hob", "oven"], ["microonde", "piano cottura", "forno"]],
+  [{ hour: 8, p: 2000, dur: 900 }, ["chauffage de salle de bain"], ["bathroom heater"], ["riscaldatore da bagno"]],
+  [{ hour: 15, p: 2000, dur: 3600 }, ["lave-linge", "lave-vaisselle"], ["washing machine", "dishwasher"], ["lavatrice", "lavastoviglie"]],
+];
+for (const [habit, fr, en, it] of hintCases) {
+  assert.deepEqual(habitHints(habit), fr);
+  assert.deepEqual(habitHints(habit, "en"), en);
+  assert.deepEqual(habitHints(habit, "it"), it);
+  assert.deepEqual(habitHints(habit, "invalid"), fr);
+}
 console.log(`\n${ok}/${n} vérifications réussies`);
 process.exit(ok === n ? 0 : 1);

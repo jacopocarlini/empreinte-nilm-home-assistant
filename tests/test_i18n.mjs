@@ -17,6 +17,8 @@ for (const language of ["en", "it"]) {
   assert.deepEqual(Object.keys(messages[language]).sort(), Object.keys(messages.fr).sort());
   for (const [key, value] of Object.entries(messages[language])) {
     assert.ok(value, `Missing ${language} translation for ${key}`);
+    const placeholders = text => [...text.matchAll(/\{(\w+)\}/g)].map(match => match[1]).sort();
+    assert.deepEqual(placeholders(value), placeholders(messages.fr[key]), `Placeholder mismatch for ${language}.${key}`);
   }
   const app = await readFile(new URL("../custom_components/empreinte/frontend/app.js", import.meta.url), "utf8");
   for (const [, key] of app.matchAll(/\btr\("([^"]+)"\)/g)) {
@@ -26,6 +28,9 @@ for (const language of ["en", "it"]) {
 assert.equal(relativeTime("it", 1000, 1000), "adesso");
 assert.equal(relativeTime("en", 1000, 1000), "just now");
 assert.equal(relativeTime("fr", 1000, 1000), "à l'instant");
+assert.equal(translate("it", "trackingLabel", { name: "Lavatrice <test>" }), "« Lavatrice <test> » monitorato fino allo spegnimento");
+assert.equal(translate("en", "expectedAt", { time: "14:30" }), "Expected to finish at 14:30");
+assert.equal(translate("en", "expectedAt"), "Expected to finish at {time}");
 for (const language of ["fr", "en", "it"]) {
   for (const [seconds, amount, unit] of [[120, -2, "minute"], [7200, -2, "hour"], [172800, -2, "day"]]) {
     assert.equal(

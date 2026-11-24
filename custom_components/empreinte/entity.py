@@ -8,6 +8,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 
 from .const import DOMAIN
+from .text import display_text
 
 
 def slug(s: str) -> str:
@@ -36,7 +37,7 @@ class ApplianceEntity(Entity):
     @property
     def name(self):
         g = self.appliance
-        return f"{g['name'] if g else self.gid} {self._label}".strip()
+        return f"{g['name'] if g else self.gid} {display_text(self.coord, self._label)}".strip()
 
     @property
     def available(self):

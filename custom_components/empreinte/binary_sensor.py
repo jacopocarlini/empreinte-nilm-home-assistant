@@ -8,6 +8,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.util import dt as dt_util
 
 from .entity import ApplianceEntity, slug
+from .text import display_text
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -41,6 +42,10 @@ class SharedRunning(BinarySensorEntity):
         self.entity_id = f"binary_sensor.empreinte_prise_{slug(name)}"
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, "sh:" + coord.shared.key(plug, name))}, name=name,
                                             manufacturer="Empreinte", model="Prise partagée")
+
+    @property
+    def name(self):
+        return display_text(self.coord, self._attr_name)
 
     @property
     def is_on(self):

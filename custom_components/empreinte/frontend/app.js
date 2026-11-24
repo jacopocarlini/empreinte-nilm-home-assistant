@@ -11,7 +11,7 @@ const median = a => { if (!a.length) return 0; const s = [...a].sort((x, y) => x
 const quant = (a, q) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(q * s.length))]; };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 let language = "fr";
-const tr = key => translate(language, key);
+const tr = (key, values) => translate(language, key, values);
 let nf1, nf0, nf2, dfDay, dfLong;
 function setLanguage(lang) {
   language = ["fr", "en", "it"].includes(lang) ? lang : "fr";
@@ -128,26 +128,14 @@ const IC = {
 const icon = (n, cls = "i") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${IC[n] || IC.plug}</svg>`;
 const ICON_RULES = [[/four/i, "oven"], [/chauff.*eau|ballon|cumulus/i, "tank"], [/chauff|radiat|soufflant|convect/i, "heater"], [/micro/i, "microwave"], [/bouill|th[ée]i/i, "kettle"], [/linge|machine [aà] laver|s[eè]che/i, "washer"], [/vaisselle/i, "dish"], [/plaque|induction|cuisson/i, "cooktop"]];
 const iconFor = name => { for (const [re, ic] of ICON_RULES) if (re.test(name || "")) return ic; return name ? "plug" : "help"; };
-const SHAPE_TXT = { stable: "Puissance constante", cycles: "S'allume et s'éteint", paliers: "Puissance qui varie" };
-const KIND_NOTE = {
-  bouilloire: "environ 2 kW pendant quelques minutes : la signature classique d'une bouilloire",
-  micro_ondes: "de courtes utilisations autour des repas, parfois en marche/arrêt (puissance réduite)",
-  four: "une longue chauffe puis des cycles marche/arrêt : le thermostat d'un four",
-  chauffage_sdb: "un plateau stable, le matin ou le soir : un radiateur soufflant",
-  lave_linge: "une chauffe de 10 à 40 min vers 2 kW : la chauffe de l'eau d'un lave-linge",
-  seche_linge: "une longue chauffe en marche/arrêt : un sèche-linge",
-  lave_vaisselle: "une chauffe de 2 kW, souvent après le repas : un lave-vaisselle",
-  plaques: "une puissance qui change souvent, aux heures des repas : plaques de cuisson",
-  aspirateur: "un plateau de 1 à 1,8 kW de quelques minutes en journée : un aspirateur",
-  fer: "des cycles marche/arrêt pendant longtemps : un fer à repasser",
-  grille_pain: "environ 1 kW pendant 1 à 5 min le matin : un grille-pain",
-  seche_cheveux: "1 à 2 kW pendant quelques minutes, matin ou soir : un sèche-cheveux",
-};
+const SHAPE_KEYS = { stable: "shapeStable", cycles: "shapeCycles", paliers: "shapeSteps" };
+const shapeText = shape => SHAPE_KEYS[shape] ? tr(SHAPE_KEYS[shape]) : "—";
+const KIND_NOTES = new Set(["bouilloire", "micro_ondes", "four", "chauffage_sdb", "lave_linge", "seche_linge", "lave_vaisselle", "plaques", "aspirateur", "fer", "grille_pain", "seche_cheveux"]);
 
 // ---------- Groupes
 const G = id => S.groups.find(g => g.id === id);
 const col = g => g ? `var(--s${g.slot})` : "var(--unk)";
-const gname = g => g ? (g.name || "Groupe " + g.letter) : tr("unknown");
+const gname = g => g ? (g.name || tr("group") + " " + g.letter) : tr("unknown");
 const gicon = g => g ? (g.name ? iconFor(g.name) : "help") : "help";
 const hypLabel = g => g && !g.name && g.hyp ? S.kinds[g.hyp] : null;
 const members = gid => EVENTS.filter(e => (e.gid || null) === gid);
@@ -167,19 +155,19 @@ function gstats(gid) {
     const r = ps[i] / ps[i - 1];
     if (r > 1.3 && (!split || r > split.r)) split = { r, thr: (ps[i] + ps[i - 1]) / 2, lowN: i, highN: ps.length - i, lowP: median(ps.slice(0, i)), highP: median(ps.slice(i)) };
   }
-  const shape = g && g.shape ? SHAPE_TXT[g.shape] : SHAPE_TXT[["stable", "paliers", "cycles"][median(m.map(e => ["stable", "paliers", "cycles"].indexOf(e.shape))) | 0]] || "—";
+  const shape = shapeText(g && g.shape ? g.shape : ["stable", "paliers", "cycles"][median(m.map(e => ["stable", "paliers", "cycles"].indexOf(e.shape))) | 0]);
   const st = { m, n: m.length, P, D, WH, hours, conf: g ? g.conf : 0, shape, split, last: m.length ? Math.max(...m.map(e => e.start)) : null, kwhWeek: m.filter(e => e.start > Date.now() - 7 * 864e5).reduce((a, e) => a + e.wh, 0) / 1000 };
   statCache.set(key, st);
   return st;
 }
 function hypReasons(g, st) {
-  const pk = st.hours.map((v, h) => [v, h]).sort((a, b) => b[0] - a[0]).filter(x => x[0] > 0).slice(0, 2).map(x => x[1] + " h").join(" et ");
-  const r = [`Consomme environ ${fmtW(st.P)}, durée typique ${fmtDur(st.D)}`, `Forme : ${st.shape.toLowerCase()}`, `Revient surtout vers ${pk || "—"}`];
-  if (KIND_NOTE[g.hyp]) r.push("Ressemble à " + KIND_NOTE[g.hyp]);
+  const pk = st.hours.map((v, h) => [v, h]).sort((a, b) => b[0] - a[0]).filter(x => x[0] > 0).slice(0, 2).map(x => x[1] + " h");
+  const r = [tr("reasonPower", { power: fmtW(st.P), duration: fmtDur(st.D) }), tr("reasonShape", { shape: st.shape.toLowerCase() }), tr("reasonTime", { time: new Intl.ListFormat(locale(language), { type: "conjunction" }).format(pk) || "—" })];
+  if (KIND_NOTES.has(g.hyp)) r.push(tr("resembles") + " " + tr("note_" + g.hyp));
   return r;
 }
 // pas assez vu (moins de 8 fois) n'est pas « à vérifier » : il faut juste qu'il tourne encore
-const confLabel = (c, g) => c >= 0.85 ? "Sûr" : g && (g.n_uses || 0) < 8 && (g.n_fixed || 0) === 0 ? `Vu ${g.n_uses || 0} fois sur 8` : c >= 0.7 ? "Probable" : "À vérifier";
+const confLabel = (c, g) => c >= 0.85 ? tr("confidenceSure") : g && (g.n_uses || 0) < 8 && (g.n_fixed || 0) === 0 ? tr("confidenceSeen", { count: g.n_uses || 0 }) : c >= 0.7 ? tr("confidenceProbable") : tr("confidenceCheck");
 const confColor = c => c >= 0.85 ? "var(--good)" : c >= 0.7 ? "var(--warn)" : "var(--crit)";
 const confBar = (c, g) => `<div class="conf"><span>${confLabel(c, g)}</span><div class="trk"><span style="width:${Math.round(c * 100)}%;background:${confColor(c)}"></span></div><span class="num">${Math.round(c * 100)} %</span></div>`;
 
@@ -390,60 +378,60 @@ async function act(msg, okMsg) {
     toast(tr("error") + " : " + (err.message || err.code || err));
   }
 }
-const moveEvents = (ids, target) => act({ action: "move", ids, target }, `${ids.length > 1 ? ids.length + " utilisations déplacées" : "Utilisation déplacée"}${target === "new" ? " dans un nouveau groupe" : target ? ` vers « ${gname(G(target))} »` : " dans « Pas reconnu »"}`);
-const confirmEvents = ids => act({ action: "confirm", ids }, ids.length > 1 ? `${ids.length} utilisations confirmées : le programme s'en sert de référence` : "Confirmée : le programme s'en sert de référence");
-const labelEvents = (ids, name) => act({ action: "label", ids, name: name.trim() }, `Rangé dans « ${name.trim()} » : le programme s'en souviendra`);
+const moveEvents = (ids, target) => act({ action: "move", ids, target }, `${ids.length > 1 ? tr("moveUsesOther", { count: ids.length }) : tr("moveUsesOne")} ${target === "new" ? tr("moveNew") : target ? tr("moveTo", { name: gname(G(target)) }) : tr("moveUnknown")}`);
+const confirmEvents = ids => act({ action: "confirm", ids }, ids.length > 1 ? tr("confirmedOther", { count: ids.length }) : tr("confirmedOne"));
+const labelEvents = (ids, name) => act({ action: "label", ids, name: name.trim() }, tr("labelSaved", { name: name.trim() }));
 function labelModal(ids, now) {
   const names = [...new Set([...S.groups.filter(g => g.name).map(g => g.name), ...SUGG])];
   const evs = EVENTS.filter(e => (ids || []).includes(e.id));
   const step = now && typeof now === "object" ? now : null;
-  const intro = step ? `Le saut de ${step.p > 0 ? "+" : ""}${fmtW(step.p)} à ${fmtHM(step.at * 1000)}. Le programme rangera ce morceau dès que tout sera éteint.`
-    : now ? "Ce qui tourne en ce moment, ou vient de s'arrêter. Le programme le rangera dès que l'utilisation sera terminée."
-    : `${evs.length > 1 ? `${evs.length} utilisations` : `${fmtWhen(evs[0].start)} · ${fmtW(evs[0].p)} · ${fmtDur(evs[0].dur)}`}. Dis-le au programme : il s'en servira pour reconnaître les prochaines.`;
-  const help = `<p class="sub" style="font-size:12.5px;margin-top:12px"><b>C'est sûr</b> : le programme range l'utilisation dans cet appareil. <b>Peut-être</b> : un simple indice, il fera la moyenne de tes « peut-être » sans rien ranger.</p>`;
-  openModal(`<h2>${now ? "En ce moment, c'est…" : "C'est quoi ?"}</h2><p class="sub">${intro}</p>
-    <input class="field" id="nm" maxlength="40" placeholder="Le nom de l'appareil, par ex. : Douche, Pompe de piscine…">
+  const intro = step ? tr("labelStep", { power: `${step.p > 0 ? "+" : ""}${fmtW(step.p)}`, time: fmtHM(step.at * 1000) })
+    : now ? tr("labelNow")
+    : tr("labelPast", { details: evs.length > 1 ? `${evs.length} ${tr("usesOther")}` : `${fmtWhen(evs[0].start)} · ${fmtW(evs[0].p)} · ${fmtDur(evs[0].dur)}` });
+  const help = `<p class="sub" style="font-size:12.5px;margin-top:12px"><b>${tr("sure")}</b> : ${tr("labelHelpSure")} <b>${tr("maybeAction")}</b> : ${tr("labelHelpMaybe")}</p>`;
+  openModal(`<h2>${tr(now ? "labelCurrent" : "labelQuestion")}</h2><p class="sub">${esc(intro)}</p>
+    <input class="field" id="nm" maxlength="40" placeholder="${esc(tr("appliancePlaceholder"))}">
     <div class="chips">${names.map(n => `<button class="chip" data-s="${esc(n)}">${icon(iconFor(n))}${esc(n)}</button>`).join("")}</div>
-    <p class="sub" style="font-size:12.5px;margin-top:10px">${icon("plus")} Pas dans la liste ? Écris simplement son nom : ça crée un nouvel appareil.</p>
+    <p class="sub" style="font-size:12.5px;margin-top:10px">${icon("plus")} ${tr("createApplianceHint")}</p>
     ${help}
-    <div class="acts"><button class="btn ghost" data-close>Annuler</button><button class="btn" id="maybe">Peut-être</button><button class="btn primary" id="ok">${icon("check")} C'est sûr</button></div>`, (b, close) => {
+    <div class="acts"><button class="btn ghost" data-close>${tr("cancel")}</button><button class="btn" id="maybe">${tr("maybeAction")}</button><button class="btn primary" id="ok">${icon("check")} ${tr("sure")}</button></div>`, (b, close) => {
     const inp = $("#nm", b); inp.focus();
     $$("[data-s]", b).forEach(c => c.onclick = () => { inp.value = c.dataset.s; inp.focus(); });
     const go_ = maybe => {
       const name = inp.value.trim(); if (!name) return inp.focus(); close();
-      if (now && step && !maybe) act({ action: "label_now", name, at: step.at, p: step.p }, `« ${name} » : je le suis jusqu'à ce qu'il s'éteigne`);
-      else if (now) act({ action: "label_now", name, maybe, ...(step ? { at: step.at, p: step.p } : {}) }, maybe ? `Noté : « peut-être ${name} ». Je l'ajouterai comme indice à la fin de l'utilisation` : `Noté : « ${name} ». Il sera rangé dès que l'utilisation sera terminée`);
-      else if (maybe) act({ action: "maybe", ids, name }, `Noté : « peut-être ${name} ». Ça l'aidera à deviner, sans rien ranger`);
+      if (now && step && !maybe) act({ action: "label_now", name, at: step.at, p: step.p }, tr("trackingLabel", { name }));
+      else if (now) act({ action: "label_now", name, maybe, ...(step ? { at: step.at, p: step.p } : {}) }, tr(maybe ? "maybePending" : "labelPending", { name }));
+      else if (maybe) act({ action: "maybe", ids, name }, tr("maybeRecorded", { name }));
       else labelEvents(ids, name);
     };
     $("#ok", b).onclick = () => go_(false); $("#maybe", b).onclick = () => go_(true);
     inp.onkeydown = e => { if (e.key === "Enter") go_(false); };
   });
 }
-const renameGroup = (gid, name) => act({ action: "rename", gid, name: name.trim() }, `Groupe nommé « ${name.trim()} »`);
-const mergeGroups = async (src, dst) => { const n = gname(G(src)), m = gname(G(dst)); await act({ action: "merge", src, dst }, `« ${n} » fusionné dans « ${m} »`); go("#/groupe/" + dst); };
-const splitGroup = (gid, thr) => act({ action: "split", gid, thr }, "Groupe séparé en deux");
+const renameGroup = (gid, name) => act({ action: "rename", gid, name: name.trim() }, tr("groupNamed", { name: name.trim() }));
+const mergeGroups = async (src, dst) => { const n = gname(G(src)), m = gname(G(dst)); await act({ action: "merge", src, dst }, tr("groupsMerged", { source: n, target: m })); go("#/groupe/" + dst); };
+const splitGroup = (gid, thr) => act({ action: "split", gid, thr }, tr("groupSplit"));
 // « C'est bon » : nomme si besoin, crée les capteurs et ajoute l'appareil au tableau Énergie.
 async function confirmGroup(gid, name) {
   try {
     if (name) applyState(await call({ type: "empreinte/action", action: "rename", gid, name }));
     applyState(await call({ type: "empreinte/action", action: "validate", gid }));
     S.sel.clear();
-    toast(`« ${gname(G(gid))} » reconnu : il sera détecté tout seul (capteurs créés)`, true);
+    toast(tr("groupValidated", { name: gname(G(gid)) }), true);
     await render();
   } catch (err) {
-    toast("Erreur : " + (err.message || err.code || err));
+    toast(tr("error") + " : " + (err.message || err.code || err));
   }
 }
 const validateGroup = gid => confirmGroup(gid);
-const dissolveGroup = async gid => { const n = gname(G(gid)); await act({ action: "delete", gid }, `« ${n} » supprimé, ses utilisations sont non classées`); go("#/decouvertes"); };
+const dissolveGroup = async gid => { const n = gname(G(gid)); await act({ action: "delete", gid }, tr("groupDeleted", { name: n })); go("#/decouvertes"); };
 
 // ---------- Fenêtres, menus, toasts
 let toastT;
 function toast(msg, canUndo) {
   const t = $("#toast"); t.innerHTML = `<span>${esc(msg)}</span>${canUndo ? `<button id="undo">${icon("undo")} ${tr("undo")}</button>` : ""}`;
   t.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 6000);
-  if (canUndo) $("#undo").onclick = () => { t.classList.remove("on"); act({ action: "undo" }, "Modification annulée"); };
+  if (canUndo) $("#undo").onclick = () => { t.classList.remove("on"); act({ action: "undo" }, tr("undoDone")); };
 }
 function openModal(html, onMount) {
   closeMenu();
@@ -470,9 +458,9 @@ function openMenu(anchor, title, items) {
 }
 function moveMenu(anchor, ids, exclude) {
   const items = S.groups.filter(g => g.id !== exclude).sort((a, b) => a.slot - b.slot).map(g => ({ label: gname(g), dot: col(g), onClick: () => moveEvents(ids, g.id) }));
-  if (exclude !== null) items.push({ label: "Pas reconnu", dot: "var(--unk)", onClick: () => moveEvents(ids, null) });
-  items.push({ label: "Nouveau groupe", icon: "plus", onClick: () => moveEvents(ids, "new") });
-  openMenu(anchor, ids.length > 1 ? `Déplacer ${ids.length} utilisations vers…` : "C'était plutôt…", items);
+  if (exclude !== null) items.push({ label: tr("unknown"), dot: "var(--unk)", onClick: () => moveEvents(ids, null) });
+  items.push({ label: tr("newGroupTitle"), icon: "plus", onClick: () => moveEvents(ids, "new") });
+  openMenu(anchor, ids.length > 1 ? tr("moveMenuMany", { count: ids.length }) : tr("moveMenuOne"), items);
 }
 const SUGG = ["Douche (chauffe-eau)", "Four", "Micro-ondes", "Bouilloire", "Frigo", "Chauffage salle de bain", "Lave-linge", "Sèche-linge", "Lave-vaisselle", "Plaques de cuisson", "Aspirateur", "Fer à repasser", "Sèche-cheveux", "Grille-pain", "Cafetière", "Climatisation"];
 // « À telle heure, c'était… » : nommer une utilisation passée (hier, avant-hier…) en donnant son heure
@@ -480,13 +468,13 @@ function atModal(ds) {
   const names = [...new Set([...S.groups.filter(g => g.name).map(g => g.name), ...SUGG])];
   const d = new Date(ds), now = new Date();
   const def = S.day === NDAYS - 1 ? `${String(Math.max(0, now.getHours() - 1)).padStart(2, "0")}:00` : "12:00";
-  openModal(`<h2>C'était quoi, à quelle heure ?</h2>
-    <p class="sub">${esc(dayLabel(S.day))} : donne l'heure à laquelle l'appareil a tourné (à quelques minutes près). Le programme range l'utilisation qui tournait à ce moment-là.</p>
+  openModal(`<h2>${tr("labelAtTitle")}</h2>
+    <p class="sub">${esc(tr("labelAtDescription", { day: dayLabel(S.day) }))}</p>
     <input class="field" id="hh" type="time" value="${def}" style="margin-bottom:10px">
-    <input class="field" id="nm" maxlength="40" placeholder="Le nom de l'appareil, par ex. : Micro-ondes, Aquarium…">
+    <input class="field" id="nm" maxlength="40" placeholder="${esc(tr("appliancePlaceholderPast"))}">
     <div class="chips">${names.map(n => `<button class="chip" data-s="${esc(n)}">${icon(iconFor(n))}${esc(n)}</button>`).join("")}</div>
-    <p class="sub" style="font-size:12.5px;margin-top:10px">${icon("plus")} Pas dans la liste ? Écris simplement son nom : ça crée un nouvel appareil.</p>
-    <div class="acts"><button class="btn ghost" data-close>Annuler</button><button class="btn" id="maybe">Peut-être</button><button class="btn primary" id="ok">${icon("check")} C'est sûr</button></div>`, (b, close) => {
+    <p class="sub" style="font-size:12.5px;margin-top:10px">${icon("plus")} ${tr("createApplianceHint")}</p>
+    <div class="acts"><button class="btn ghost" data-close>${tr("cancel")}</button><button class="btn" id="maybe">${tr("maybeAction")}</button><button class="btn primary" id="ok">${icon("check")} ${tr("sure")}</button></div>`, (b, close) => {
     const inp = $("#nm", b), hh = $("#hh", b);
     $$("[data-s]", b).forEach(c => c.onclick = () => { inp.value = c.dataset.s; inp.focus(); });
     const go_ = maybe => {
@@ -494,7 +482,7 @@ function atModal(ds) {
       const [h, m] = (hh.value || "12:00").split(":").map(Number);
       const t = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m).getTime() / 1000;
       close();
-      act({ action: "label_at", t, name, maybe }, maybe ? `Noté : « peut-être ${name} » à ${hh.value}` : `« ${name} » rangé à ${hh.value}`);
+      act({ action: "label_at", t, name, maybe }, tr(maybe ? "maybeAt" : "savedAt", { name, time: hh.value }));
     };
     $("#ok", b).onclick = () => go_(false); $("#maybe", b).onclick = () => go_(true);
   });
@@ -502,7 +490,7 @@ function atModal(ds) {
 function nameModal(title, value, done) {
   openModal(`<h2>${esc(title)}</h2>
     <input class="field" id="nm" maxlength="40" placeholder="Ex. : Électroménager, Cuisine…" value="${esc(value || "")}">
-    <div class="acts"><button class="btn ghost" data-close>Annuler</button><button class="btn primary" id="ok">Enregistrer</button></div>`, (b, close) => {
+    <div class="acts"><button class="btn ghost" data-close>${tr("cancel")}</button><button class="btn primary" id="ok">${tr("save")}</button></div>`, (b, close) => {
     const inp = $("#nm", b); inp.focus(); inp.select();
     const ok = () => { if (!inp.value.trim()) return inp.focus(); close(); done(inp.value.trim()); };
     $("#ok", b).onclick = ok; inp.onkeydown = e => { if (e.key === "Enter") ok(); };
@@ -510,12 +498,12 @@ function nameModal(title, value, done) {
 }
 function renameModal(gid) {
   const g = G(gid), st = gstats(gid), hyp = hypLabel(g);
-  openModal(`<h2>Quel appareil est-ce ?</h2><p class="sub">${st.n} utilisations · environ ${fmtW(st.P)} · ${fmtDur(st.D)}${hyp ? ` · le programme pense à <b>${esc(hyp)}</b>` : ""}</p>
-    <input class="field" id="nm" maxlength="40" placeholder="Le nom de l'appareil, par ex. : Four, Spa…" value="${esc(g.name || hyp || "")}">
+  openModal(`<h2>${tr("renameTitle")}</h2><p class="sub">${st.n} ${tr(st.n === 1 ? "usesOne" : "usesOther")} · ${tr("approximately")} ${fmtW(st.P)} · ${fmtDur(st.D)}${hyp ? ` · ${tr("guessedAppliance")} <b>${esc(hyp)}</b>` : ""}</p>
+    <input class="field" id="nm" maxlength="40" placeholder="${esc(tr("renamePlaceholder"))}" value="${esc(g.name || hyp || "")}">
     <div class="chips">${SUGG.map(s => `<button class="chip" data-s="${esc(s)}">${icon(iconFor(s))}${esc(s)}</button>`).join("")}</div>
-    <p class="sub" style="font-size:12.5px;margin-top:10px">${icon("plus")} Pas dans la liste ? Écris simplement son nom : ça crée un nouvel appareil.</p>
-    ${g.status === "valide" ? `<p class="sub" style="font-size:12.5px;margin-top:14px">Les capteurs déjà créés gardent leur identifiant. Seul le nom affiché change.</p>` : ""}
-    <div class="acts"><button class="btn ghost" data-close>Annuler</button><button class="btn primary" id="ok">Enregistrer</button></div>`, (b, close) => {
+    <p class="sub" style="font-size:12.5px;margin-top:10px">${icon("plus")} ${tr("createApplianceHint")}</p>
+    ${g.status === "valide" ? `<p class="sub" style="font-size:12.5px;margin-top:14px">${tr("sensorIdsKept")}</p>` : ""}
+    <div class="acts"><button class="btn ghost" data-close>${tr("cancel")}</button><button class="btn primary" id="ok">${tr("save")}</button></div>`, (b, close) => {
     const inp = $("#nm", b); inp.focus(); inp.select();
     $$("[data-s]", b).forEach(c => c.onclick = () => { inp.value = c.dataset.s; inp.focus(); });
     const ok = () => { if (!inp.value.trim()) return inp.focus(); close(); renameGroup(gid, inp.value); };
@@ -524,37 +512,37 @@ function renameModal(gid) {
 }
 function mergeModal(gid) {
   const g = G(gid), others = S.groups.filter(x => x.id !== gid).sort((a, b) => a.slot - b.slot);
-  if (!others.length) return toast("Il n'y a pas d'autre groupe avec lequel fusionner.");
-  openModal(`<h2>Fusionner « ${esc(gname(g))} »</h2><p class="sub">Toutes ses utilisations rejoignent le groupe choisi. C'est utile quand le programme a coupé un même appareil en deux.</p>
-    ${others.map((o, i) => { const s = gstats(o.id); return `<label class="opt"><input type="radio" name="dst" value="${o.id}" ${i === 0 ? "checked" : ""}><span class="dot" style="background:${col(o)}"></span><span style="flex:1"><b>${esc(gname(o))}</b><br><span class="muted" style="font-size:12px">${s.n} fois · ${fmtW(s.P)} · ${fmtDur(s.D)}</span></span></label>`; }).join("")}
-    <div class="acts"><button class="btn ghost" data-close>Annuler</button><button class="btn primary" id="ok">${icon("merge")} Fusionner</button></div>`, (b, close) => {
+  if (!others.length) return toast(tr("noMergeTarget"));
+  openModal(`<h2>${esc(tr("mergeTitle", { name: gname(g) }))}</h2><p class="sub">${tr("mergeDescription")}</p>
+    ${others.map((o, i) => { const s = gstats(o.id); return `<label class="opt"><input type="radio" name="dst" value="${o.id}" ${i === 0 ? "checked" : ""}><span class="dot" style="background:${col(o)}"></span><span style="flex:1"><b>${esc(gname(o))}</b><br><span class="muted" style="font-size:12px">${s.n} ${tr("times")} · ${fmtW(s.P)} · ${fmtDur(s.D)}</span></span></label>`; }).join("")}
+    <div class="acts"><button class="btn ghost" data-close>${tr("cancel")}</button><button class="btn primary" id="ok">${icon("merge")} ${tr("merge")}</button></div>`, (b, close) => {
     $("#ok", b).onclick = () => { const v = $("input[name=dst]:checked", b).value; close(); mergeGroups(gid, v); };
   });
 }
 function splitModal(gid) {
   const st = gstats(gid);
-  if (!st.split) return toast("Pas deux familles nettes dans ce groupe. Sélectionne les utilisations à sortir, puis « Nouveau groupe ».");
+  if (!st.split) return toast(tr("noSplit"));
   const sp = st.split;
-  openModal(`<h2>Séparer en deux groupes</h2><p class="sub">Le programme voit deux niveaux de puissance bien distincts dans ce groupe. Par exemple, un chauffage qui a deux allures.</p>
-    <div class="grid g-2" style="margin-top:14px"><div class="card" style="box-shadow:none"><span class="muted" style="font-size:12px">Reste dans ce groupe</span><div style="font-size:20px;font-weight:600">${fmtW(sp.highP)}</div><span class="muted" style="font-size:12.5px">${sp.highN} utilisations</span></div>
-    <div class="card" style="box-shadow:none"><span class="muted" style="font-size:12px">Nouveau groupe</span><div style="font-size:20px;font-weight:600">${fmtW(sp.lowP)}</div><span class="muted" style="font-size:12.5px">${sp.lowN} utilisations</span></div></div>
-    <div class="acts"><button class="btn ghost" data-close>Annuler</button><button class="btn primary" id="ok">${icon("split")} Séparer</button></div>`, (b, close) => {
+  openModal(`<h2>${tr("splitTitle")}</h2><p class="sub">${tr("splitDescription")}</p>
+    <div class="grid g-2" style="margin-top:14px"><div class="card" style="box-shadow:none"><span class="muted" style="font-size:12px">${tr("staysInGroup")}</span><div style="font-size:20px;font-weight:600">${fmtW(sp.highP)}</div><span class="muted" style="font-size:12.5px">${sp.highN} ${tr(sp.highN === 1 ? "usesOne" : "usesOther")}</span></div>
+    <div class="card" style="box-shadow:none"><span class="muted" style="font-size:12px">${tr("newGroupTitle")}</span><div style="font-size:20px;font-weight:600">${fmtW(sp.lowP)}</div><span class="muted" style="font-size:12.5px">${sp.lowN} ${tr(sp.lowN === 1 ? "usesOne" : "usesOther")}</span></div></div>
+    <div class="acts"><button class="btn ghost" data-close>${tr("cancel")}</button><button class="btn primary" id="ok">${icon("split")} ${tr("split")}</button></div>`, (b, close) => {
     $("#ok", b).onclick = () => { close(); splitGroup(gid, sp.thr); };
   });
 }
 function validateModal(gid) {
-  const g = G(gid), st = gstats(gid), s = slug(gname(g));
-  openModal(`<h2>Créer les capteurs « ${esc(gname(g))} »</h2>
-    <p class="sub">Le programme reconnaîtra cet appareil tout seul et créera ces trois capteurs dans Home Assistant. Il est aussi ajouté dans le tableau Énergie, sauf s'il y est déjà compté avec sa catégorie. Tu peux l'en retirer dans « Appareils ».</p>
+  const g = G(gid), st = gstats(gid), s = slug(g.name || "Groupe " + g.letter);
+  openModal(`<h2>${esc(tr("createSensorsTitle", { name: gname(g) }))}</h2>
+    <p class="sub">${tr("createSensorsDescription")}</p>
     <div class="ent" style="margin-top:14px">
-      <div><b>binary_sensor.empreinte_${s}</b><span>en marche / arrêt</span></div>
-      <div><b>sensor.empreinte_${s}_puissance</b><span>W · puissance</span></div>
-      <div><b>sensor.empreinte_${s}_energie</b><span>kWh · énergie cumulée</span></div>
+      <div><b>binary_sensor.empreinte_${s}</b><span>${tr("onOff")}</span></div>
+      <div><b>sensor.empreinte_${s}_puissance</b><span>W · ${tr("power")}</span></div>
+      <div><b>sensor.empreinte_${s}_energie</b><span>kWh · ${tr("cumulativeEnergy")}</span></div>
     </div>
     <div style="margin-top:14px">${confBar(st.conf, g)}</div>
-    ${st.conf < 0.8 ? `<p class="sub" style="font-size:12.5px">La confiance est encore moyenne. Tu peux valider quand même : le programme continuera d'apprendre de tes corrections.</p>` : ""}
-    ${g.name ? "" : `<p class="sub" style="font-size:12.5px">Astuce : donne-lui d'abord un nom, les capteurs le prendront dans leur identifiant.</p>`}
-    <div class="acts"><button class="btn ghost" data-close>Pas encore</button><button class="btn primary" id="ok">${icon("check")} Créer les capteurs</button></div>`, (b, close) => {
+    ${st.conf < 0.8 ? `<p class="sub" style="font-size:12.5px">${tr("confidenceMedium")}</p>` : ""}
+    ${g.name ? "" : `<p class="sub" style="font-size:12.5px">${tr("nameFirst")}</p>`}
+    <div class="acts"><button class="btn ghost" data-close>${tr("notYet")}</button><button class="btn primary" id="ok">${icon("check")} ${tr("createSensors")}</button></div>`, (b, close) => {
     $("#ok", b).onclick = () => { close(); validateGroup(gid); };
   });
 }
@@ -596,24 +584,24 @@ function renderRangeSeg() {
 // Journal unique : ce qui tourne en ce moment (appareil par appareil) et ce qui s'est allumé ce jour-là.
 // « Durée » : combien de temps dure le programme (lave-vaisselle, lave-linge…). Retenu pour la prochaine fois.
 function durationModal(tid) {
-  const tr = (S.status.tracks || []).find(t => t.id === tid);
-  if (!tr) return;
-  const elapsed = Math.round((Date.now() / 1000 - tr.at) / 60);
+  const track = (S.status.tracks || []).find(t => t.id === tid);
+  if (!track) return;
+  const elapsed = Math.round((Date.now() / 1000 - track.at) / 60);
   // programmes déjà vus : on propose le temps qu'il leur resterait maintenant
-  const usual = (tr.used || []).map(total => total - elapsed).filter(m => m > 0);
+  const usual = (track.used || []).map(total => total - elapsed).filter(m => m > 0);
   const opts = [15, 30, 45, 60, 90, 120, 150, 180].filter(m => !usual.some(u => Math.abs(u - m) < 5));
-  openModal(`<h2>Il reste combien de temps ?</h2><p class="sub">Indique le temps restant affiché par ${esc(tr.name.toLowerCase())}, à partir de maintenant. Jusque-là, le programme ne le considérera pas comme fini, même pendant une longue pause. Les autres appareils (thé, café…) restent à part.</p>
-    ${usual.length ? `<p class="sub" style="font-size:12.5px;margin-top:12px">Comme les autres fois :</p><div class="chips" style="margin-top:6px">${usual.map(m => `<button class="chip" data-m="${m}">${icon("clock")} encore ${fmtDur(m * 60)}</button>`).join("")}</div><p class="sub" style="font-size:12.5px;margin-top:10px">Autre :</p>` : ""}
-    <div class="chips">${opts.map(m => `<button class="chip" data-m="${m}">encore ${fmtDur(m * 60)}</button>`).join("")}</div>
-    <div style="display:flex;align-items:center;gap:8px;margin-top:12px">encore <input class="field" id="hh" type="number" min="0" max="23" placeholder="h" style="width:80px;margin:0"> h <input class="field" id="mm" type="number" min="0" max="59" placeholder="min" style="width:90px;margin:0"> min</div>
-    <div class="acts"><button class="btn ghost" data-close>Annuler</button><button class="btn primary" id="ok">${icon("clock")} Enregistrer</button></div>`, (b, close) => {
-    const send = m => { if (!(m > 0)) return; close(); act({ action: "track_duration", tid, minutes: m }, `Fin prévue à ${fmtHM(Date.now() + m * 60000)}`); };
+  openModal(`<h2>${tr("remainingQuestion")}</h2><p class="sub">${esc(tr("remainingDescription", { name: track.name }))}</p>
+    ${usual.length ? `<p class="sub" style="font-size:12.5px;margin-top:12px">${tr("usualTimes")}</p><div class="chips" style="margin-top:6px">${usual.map(m => `<button class="chip" data-m="${m}">${icon("clock")} ${tr("another")} ${fmtDur(m * 60)}</button>`).join("")}</div><p class="sub" style="font-size:12.5px;margin-top:10px">${tr("otherTime")}</p>` : ""}
+    <div class="chips">${opts.map(m => `<button class="chip" data-m="${m}">${tr("another")} ${fmtDur(m * 60)}</button>`).join("")}</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:12px">${tr("another")} <input class="field" id="hh" type="number" min="0" max="23" placeholder="h" style="width:80px;margin:0"> h <input class="field" id="mm" type="number" min="0" max="59" placeholder="min" style="width:90px;margin:0"> min</div>
+    <div class="acts"><button class="btn ghost" data-close>${tr("cancel")}</button><button class="btn primary" id="ok">${icon("clock")} ${tr("save")}</button></div>`, (b, close) => {
+    const send = m => { if (!(m > 0)) return; close(); act({ action: "track_duration", tid, minutes: m }, tr("expectedAt", { time: fmtHM(Date.now() + m * 60000) })); };
     $$("[data-m]", b).forEach(c => c.onclick = () => send(Number(c.dataset.m)));
     $("#ok", b).onclick = () => send((Number($("#hh", b).value) || 0) * 60 + (Number($("#mm", b).value) || 0));
   });
 }
 function bindUnhint() {
-  $$("[data-unhint]").forEach(b => b.onclick = ev => { ev.stopPropagation(); act({ action: "unmaybe", ids: [b.dataset.unhint] }, "« Peut-être » retiré"); });
+  $$("[data-unhint]").forEach(b => b.onclick = ev => { ev.stopPropagation(); act({ action: "unmaybe", ids: [b.dataset.unhint] }, tr("hintRemoved")); });
 }
 function journalCard(dd, evs, today) {
   const st = S.status, parts = today ? st.running_parts || [] : [], tracks = today ? st.tracks || [] : [];
@@ -693,12 +681,12 @@ function mountApercu() {
   if ($("#b-at")) $("#b-at").onclick = () => atModal(dayData(S.day).ds);
   $("#b-grp").onclick = () => { S.grp = !S.grp; try { localStorage.setItem("empreinte-grp", S.grp ? "1" : "0"); } catch (e) { } render(); };
   $$("[data-live]").forEach(b => b.onclick = () => { const [at, p] = b.dataset.live.split(",").map(Number); labelModal(null, { at, p }); });
-  $$("[data-quick-live]").forEach(b => b.onclick = () => { const [at, p] = b.dataset.quickLive.split(",").map(Number); act({ action: "label_now", name: b.dataset.name, at, p }, `« ${b.dataset.name} » : je le suis jusqu'à ce qu'il s'éteigne`); });
+  $$("[data-quick-live]").forEach(b => b.onclick = () => { const [at, p] = b.dataset.quickLive.split(",").map(Number); act({ action: "label_now", name: b.dataset.name, at, p }, tr("trackingLabel", { name: b.dataset.name })); });
   $$("[data-quick]").forEach(b => b.onclick = () => labelEvents([b.dataset.quick], b.dataset.name));
-  $$("[data-cancel]").forEach(b => b.onclick = () => act({ action: "cancel_pending", t: Number(b.dataset.cancel) }, "Étiquette retirée"));
+  $$("[data-cancel]").forEach(b => b.onclick = () => act({ action: "cancel_pending", t: Number(b.dataset.cancel) }, tr("labelRemoved")));
   $$("[data-tdur]").forEach(b => b.onclick = () => durationModal(b.dataset.tdur));
-  $$("[data-tstop]").forEach(b => b.onclick = () => act({ action: "track_stop", tid: b.dataset.tstop }, "Noté : c'est fini. L'appareil est enregistré"));
-  $$("[data-tcancel]").forEach(b => b.onclick = () => act({ action: "track_cancel", tid: b.dataset.tcancel }, "Suivi arrêté"));
+  $$("[data-tstop]").forEach(b => b.onclick = () => act({ action: "track_stop", tid: b.dataset.tstop }, tr("trackingFinished")));
+  $$("[data-tcancel]").forEach(b => b.onclick = () => act({ action: "track_cancel", tid: b.dataset.tcancel }, tr("trackingStopped")));
   bindUnhint();
   $$("[data-label]").forEach(b => b.onclick = () => labelModal([b.dataset.label]));
   $("#dprev").onclick = () => { if (S.day > 0) { S.day--; render(); } };
@@ -708,15 +696,15 @@ function mountApercu() {
 // ---------- Page : Découvertes
 function gcard(g) {
   const st = gstats(g.id), hyp = hypLabel(g);
-  const pill = g.status === "valide" ? `<span class="pill ok">${icon("sensor")}Capteur actif</span>` : g.status === "nomme" ? (g.auto ? `<span class="pill new">Nommé tout seul</span>` : `<span class="pill">En apprentissage</span>`) : `<span class="pill new">Nouveau</span>`;
+  const pill = g.status === "valide" ? `<span class="pill ok">${icon("sensor")}${tr("sensorActive")}</span>` : g.status === "nomme" ? (g.auto ? `<span class="pill new">${tr("automaticallyNamed")}</span>` : `<span class="pill">${tr("learning")}</span>`) : `<span class="pill new">${tr("newGroup")}</span>`;
   const aty = st.m.filter(isAty).length;
   return `<div class="card gcard" data-go="#/groupe/${g.id}">
-    <div class="gtitle"><div class="gicon" style="background:${col(g)}">${icon(gicon(g))}</div><div style="min-width:0;flex:1"><div class="nm">${esc(gname(g))}</div><div class="hy">${hyp ? `Ressemble à : <b style="color:var(--ink)">${esc(hyp)}</b> · ${Math.round((g.hyp_score || 0) * 100)} %` : g.name ? `Groupe ${g.letter}` : "Pas encore d'idée : dis-moi ce que c'est"}</div></div>${pill}</div>
+    <div class="gtitle"><div class="gicon" style="background:${col(g)}">${icon(gicon(g))}</div><div style="min-width:0;flex:1"><div class="nm">${esc(gname(g))}</div><div class="hy">${hyp ? `${tr("resembles")} : <b style="color:var(--ink)">${esc(hyp)}</b> · ${Math.round((g.hyp_score || 0) * 100)} %` : g.name ? `${tr("group")} ${esc(g.letter)}` : tr("noIdea")}</div></div>${pill}</div>
     <div class="chart mini" data-ov="${g.id}"></div>
-    <div class="gstats"><span><b>${fmtW(st.P)}</b>puissance</span><span><b>${fmtDur(st.D)}</b>durée</span><span><b>${st.n}</b>fois</span><span><b>${fmtKwh(st.kwhWeek)}</b>sur 7 j</span></div>
+    <div class="gstats"><span><b>${fmtW(st.P)}</b>${tr("power")}</span><span><b>${fmtDur(st.D)}</b>${tr("duration")}</span><span><b>${st.n}</b>${tr("times")}</span><span><b>${fmtKwh(st.kwhWeek)}</b>${tr("lastSevenDays")}</span></div>
     ${hoursStrip(st.hours, col(g))}
     ${confBar(st.conf, g)}
-    ${aty ? `<div class="atyp">${icon("alert")} ${aty} utilisation${aty > 1 ? "s" : ""} à vérifier</div>` : ""}
+    ${aty ? `<div class="atyp">${icon("alert")} ${aty} ${tr(aty === 1 ? "usesOne" : "usesOther")} ${tr("usesToCheck")}</div>` : ""}
   </div>`;
 }
 function pageDecouvertes() {
@@ -725,49 +713,49 @@ function pageDecouvertes() {
   const by = (a, b) => gstats(b.id).n - gstats(a.id).n;
   const empty = !S.groups.length;
   return `
-  <div class="page-h"><div><h1>${tr("discoveries")}</h1><p class="sub">Le programme regroupe tout seul les utilisations qui se ressemblent. Toi, tu dis juste ce que c'est.</p></div></div>
+  <div class="page-h"><div><h1>${tr("discoveries")}</h1><p class="sub">${tr("discoveriesDescription")}</p></div></div>
   <div class="card"><div class="how">
-    <div><span class="n">1</span><span><b>Il repère</b>chaque appareil qui s'allume (plus de 350 W d'un coup)</span></div>
-    <div><span class="n">2</span><span><b>Il regroupe</b>par puissance, durée, forme de courbe et heure</span></div>
-    <div><span class="n">3</span><span><b>Tu nommes</b>le groupe, et tu sors ce qui n'a rien à y faire</span></div>
-    <div><span class="n">4</span><span><b>Il reconnaît</b>l'appareil tout seul et crée ses capteurs</span></div>
+    <div><span class="n">1</span><span><b>${tr("introDetect")}</b>${tr("discoverDetect")}</span></div>
+    <div><span class="n">2</span><span><b>${tr("discoverGroup")}</b>${tr("discoverGroupDescription")}</span></div>
+    <div><span class="n">3</span><span><b>${tr("introName")}</b>${tr("discoverName")}</span></div>
+    <div><span class="n">4</span><span><b>${tr("introRecognise")}</b>${tr("discoverRecognise")}</span></div>
   </div></div>
-  ${empty ? `<div class="card" style="margin-top:16px"><h2>Pas encore de groupe</h2><p class="sub">Le programme a repéré ${EVENTS.length} utilisation${EVENTS.length > 1 ? "s" : ""}. Il lui faut au moins 3 utilisations qui se ressemblent pour former un groupe. Laisse-le tourner 2 ou 3 jours : les groupes apparaîtront ici tout seuls.</p></div>` : ""}
-  ${nouv.length ? `<div class="section-t"><h2>À identifier</h2><span>${nouv.length} groupe${nouv.length > 1 ? "s" : ""}</span></div><div class="groups">${nouv.sort(by).map(gcard).join("")}</div>` : ""}
-  ${app.length ? `<div class="section-t"><h2>En apprentissage</h2><span>nommés, pas encore validés</span></div><div class="groups">${app.sort(by).map(gcard).join("")}</div>` : ""}
-  ${unk.length ? `<div class="section-t"><h2>Pas encore reconnus</h2><span>${unk.length} utilisation${unk.length > 1 ? "s" : ""} encore seule${unk.length > 1 ? "s" : ""} ou trop irrégulière${unk.length > 1 ? "s" : ""}</span></div>
-    <div class="card gcard" data-go="#/groupe/aucun"><div class="gtitle"><div class="gicon" style="background:var(--unk)">${icon("help")}</div><div style="flex:1;min-width:0"><div class="nm">Pas encore reconnus</div><div class="hy">Tu peux les ranger toi-même, ou attendre que des utilisations semblables arrivent.</div></div></div><div class="chart mini" data-ov="aucun"></div></div>` : ""}
-  ${val.length ? `<div class="section-t"><h2>Validés</h2><span>reconnus automatiquement</span></div><div class="groups">${val.sort(by).map(gcard).join("")}</div>` : ""}`;
+  ${empty ? `<div class="card" style="margin-top:16px"><h2>${tr("noGroups")}</h2><p class="sub">${tr("noGroupsDescription", { count: EVENTS.length, uses: tr(EVENTS.length === 1 ? "usesOne" : "usesOther") })}</p></div>` : ""}
+  ${nouv.length ? `<div class="section-t"><h2>${tr("toIdentify")}</h2><span>${nouv.length} ${tr(nouv.length === 1 ? "groupOne" : "groupOther")}</span></div><div class="groups">${nouv.sort(by).map(gcard).join("")}</div>` : ""}
+  ${app.length ? `<div class="section-t"><h2>${tr("learning")}</h2><span>${tr("namedNotValidated")}</span></div><div class="groups">${app.sort(by).map(gcard).join("")}</div>` : ""}
+  ${unk.length ? `<div class="section-t"><h2>${tr("notYetRecognisedPlural")}</h2><span>${tr("unidentifiedCount", { count: unk.length, uses: tr(unk.length === 1 ? "usesOne" : "usesOther") })}</span></div>
+    <div class="card gcard" data-go="#/groupe/aucun"><div class="gtitle"><div class="gicon" style="background:var(--unk)">${icon("help")}</div><div style="flex:1;min-width:0"><div class="nm">${tr("notYetRecognisedPlural")}</div><div class="hy">${tr("unidentifiedHint")}</div></div></div><div class="chart mini" data-ov="aucun"></div></div>` : ""}
+  ${val.length ? `<div class="section-t"><h2>${tr("validated")}</h2><span>${tr("recognisedAutomaticallyPlural")}</span></div><div class="groups">${val.sort(by).map(gcard).join("")}</div>` : ""}`;
 }
 function mountOverlays() { $$("[data-ov]").forEach(el => drawOverlay(el, el.dataset.ov === "aucun" ? null : el.dataset.ov, true)); }
 
 // ---------- Page : un groupe
 function pageGroupe(gid) {
   const g = gid === "aucun" ? null : G(gid);
-  if (gid !== "aucun" && !g) return `<a class="back" href="#/decouvertes">${icon("left")} Découvertes</a><div class="card empty">Ce groupe n'existe plus (fusionné ou supprimé).</div>`;
+  if (gid !== "aucun" && !g) return `<a class="back" href="#/decouvertes">${icon("left")} ${tr("discoveries")}</a><div class="card empty">${tr("groupMissing")}</div>`;
   const st = gstats(g ? gid : null);
   const hyp = hypLabel(g);
   const evs = [...st.m].sort((a, b) => (a.sim ?? 1) - (b.sim ?? 1) || b.start - a.start);
   const aty = g ? evs.filter(isAty).length : 0;
-  const pill = !g ? "" : g.status === "valide" ? `<span class="pill ok">${icon("sensor")}Capteur actif</span>` : g.status === "nomme" ? `<span class="pill">En apprentissage</span>` : `<span class="pill new">Nouveau</span>`;
+  const pill = !g ? "" : g.status === "valide" ? `<span class="pill ok">${icon("sensor")}${tr("sensorActive")}</span>` : g.status === "nomme" ? `<span class="pill">${tr("learning")}</span>` : `<span class="pill new">${tr("newGroup")}</span>`;
   return `
-  <a class="back" href="#/decouvertes">${icon("left")} Découvertes</a>
+  <a class="back" href="#/decouvertes">${icon("left")} ${tr("discoveries")}</a>
   <div class="ghead"><div class="gicon" style="background:${col(g)}">${icon(gicon(g))}</div>
-    <div><h1>${esc(gname(g))} ${pill}</h1><p class="sub">${g ? `Groupe ${g.letter} · ${st.n} utilisation${st.n > 1 ? "s" : ""}${st.last ? " · dernière : " + fmtWhen(st.last).toLowerCase() : ""}` : "Utilisations que le programme n'a pas encore su ranger"}</p></div>
-    ${g ? `<div class="acts"><button class="btn" id="b-ren">${icon("edit")} ${g.name ? "Renommer" : "Nommer"}</button><button class="btn" id="b-mer">${icon("merge")} Fusionner</button><button class="btn" id="b-spl">${icon("split")} Séparer</button>${g.name ? `<button class="btn" id="b-plug" title="Il est maintenant sur une prise connectée mesurée : Empreinte ne le cherche plus sur la courbe">${g.mesure ? "Plus sur une prise" : "Mesuré par une prise"}</button>` : ""}${g.status !== "valide" ? `<button class="btn primary" id="b-val">${icon("check")} Valider</button>` : ""}</div>` : ""}
+    <div><h1>${esc(gname(g))} ${pill}</h1><p class="sub">${g ? esc(tr("groupSummary", { group: tr("group"), letter: g.letter, count: st.n, uses: tr(st.n === 1 ? "usesOne" : "usesOther") }) + (st.last ? " · " + tr("groupLast", { time: fmtWhen(st.last) }) : "")) : tr("unassignedDescription")}</p></div>
+    ${g ? `<div class="acts"><button class="btn" id="b-ren">${icon("edit")} ${tr(g.name ? "rename" : "nameAction")}</button><button class="btn" id="b-mer">${icon("merge")} ${tr("merge")}</button><button class="btn" id="b-spl">${icon("split")} ${tr("split")}</button>${g.name ? `<button class="btn" id="b-plug" title="${esc(tr("measuredPlugHelp"))}">${tr(g.mesure ? "removeMeasuredPlug" : "measuredPlug")}</button>` : ""}${g.status !== "valide" ? `<button class="btn primary" id="b-val">${icon("check")} ${tr("validate")}</button>` : ""}</div>` : ""}
   </div>
   <div class="stack" style="margin-top:18px">
-    ${hyp ? `<div class="hyp"><div class="q"><b>Hypothèse : ça ressemble à ${esc(hyp.toLowerCase())}</b> <span class="muted">(${Math.round((g.hyp_score || 0) * 100)} %)</span><ul>${hypReasons(g, st).map(r => `<li>${esc(r)}</li>`).join("")}</ul></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="b-yes">${icon("check")} Oui, c'est ça</button><button class="btn" id="b-no">Non, c'est…</button></div></div>` : ""}
-    ${g && g.auto && g.status === "nomme" ? `<div class="hyp"><div class="q"><b>Le programme l'a nommé tout seul : ${esc(g.name.toLowerCase())}</b><ul>${hypReasons({ ...g, hyp: g.hyp }, st).map(r => `<li>${esc(r)}</li>`).join("")}</ul></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="b-ok">${icon("check")} C'est bon</button><button class="btn" id="b-no">Non, c'est…</button></div></div>` : ""}
-    ${g && st.split ? `<div class="banner">${icon("split")}<div class="grow"><b>Deux niveaux de puissance repérés</b> : ${st.split.highN} fois vers ${fmtW(st.split.highP)} et ${st.split.lowN} fois vers ${fmtW(st.split.lowP)}. C'est peut-être un appareil à deux allures, ou deux appareils différents.</div><button class="btn sm" id="b-spl2">Séparer</button></div>` : ""}
-    ${aty ? `<div class="banner">${icon("alert")}<div class="grow"><b>${aty} utilisation${aty > 1 ? "s" : ""} ne ressemble${aty > 1 ? "nt" : ""} pas aux autres.</b> Elles sont en haut de la liste et en gris sur le graphe. Si ce n'était pas ${g.name ? esc(g.name.toLowerCase()) : "cet appareil"}, clique sur « Pas ça ».</div></div>` : ""}
+    ${hyp ? `<div class="hyp"><div class="q"><b>${esc(tr("hypothesisTitle", { name: hyp }))}</b> <span class="muted">(${Math.round((g.hyp_score || 0) * 100)} %)</span><ul>${hypReasons(g, st).map(r => `<li>${esc(r)}</li>`).join("")}</ul></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="b-yes">${icon("check")} ${tr("yesCorrect")}</button><button class="btn" id="b-no">${tr("noInstead")}</button></div></div>` : ""}
+    ${g && g.auto && g.status === "nomme" ? `<div class="hyp"><div class="q"><b>${esc(tr("autoNamedTitle", { name: g.name }))}</b><ul>${hypReasons({ ...g, hyp: g.hyp }, st).map(r => `<li>${esc(r)}</li>`).join("")}</ul></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="b-ok">${icon("check")} ${tr("looksGood")}</button><button class="btn" id="b-no">${tr("noInstead")}</button></div></div>` : ""}
+    ${g && st.split ? `<div class="banner">${icon("split")}<div class="grow"><b>${tr("twoPowerLevels")}</b> : ${esc(tr("powerLevelsDescription", { highCount: st.split.highN, highPower: fmtW(st.split.highP), lowCount: st.split.lowN, lowPower: fmtW(st.split.lowP) }))}</div><button class="btn sm" id="b-spl2">${tr("split")}</button></div>` : ""}
+    ${aty ? `<div class="banner">${icon("alert")}<div class="grow"><b>${esc(tr("unusualUses", { count: aty, uses: tr(aty === 1 ? "usesOne" : "usesOther") }))}</b> ${esc(tr("unusualDescription", { name: g.name || tr("thisAppliance") }))}</div></div>` : ""}
     ${proofBlock(g)}
-    <div class="card"><div class="card-h"><div><h2>Toutes les courbes superposées</h2><p>Alignées sur leur début. Survole une ligne de la liste pour la retrouver.</p></div></div><div class="chart" id="ov"></div></div>
-    ${g ? `<div class="feat"><div><span>Puissance typique</span><b>${fmtW(st.P)}</b></div><div><span>Durée typique</span><b>${fmtDur(st.D)}</b></div><div><span>Énergie par utilisation</span><b>${fmtKwh(st.WH / 1000)}</b></div><div><span>Forme</span><b>${st.shape}</b></div><div><span>Coût sur 7 jours</span><b>${fmtEur(st.kwhWeek)}</b></div></div>
-    <div class="card"><div class="card-h"><div><h2>À quelle heure ?</h2><p>Nombre de utilisations par heure</p></div></div>${hourBars(st.hours, col(g))}</div>` : ""}
-    <div class="card occ"><div class="card-h"><div><h2>Utilisations</h2><p>${g ? "Les moins ressemblantes en premier" : "Range-les dans un groupe, ou crée-en un nouveau"}</p></div>${evs.length ? `<button class="btn sm ghost" id="b-all">Tout sélectionner</button>` : ""}</div>
-      <div class="list">${evs.map(e => { const s = e.sim; return `<div class="row" data-row="${e.id}"><input type="checkbox" data-sel="${e.id}" ${S.sel.has(e.id) ? "checked" : ""} aria-label="Sélectionner">${spark(e, isAty(e) ? "var(--muted)" : col(g))}<div class="grow"><div class="t1">${fmtWhen(e.start)}</div><div class="t2">${isAty(e) ? `<span class="atyp">${icon("alert")}différente des autres</span>` : fmtKwh(e.wh / 1000)}${e.probable ? ` · <span class="muted" title="Rangé tout seul d'après ce qui lui ressemble : corrige-le seulement si c'est faux">probable</span>` : ""}${e.hint ? ` · <span class="muted">peut-être : ${esc(e.hint)}</span><button class="icon-btn" style="width:24px;height:24px;display:inline-grid;vertical-align:middle" data-unhint="${e.id}" title="Retirer ce « peut-être »">${icon("x")}</button>` : ""}${e.split ? ` · <span title="Un autre appareil tournait en même temps : le programme les a séparés">séparée d'un autre appareil</span>` : ""}<span class="monly"> · ${fmtW(e.p)} · ${fmtDur(e.dur)}${s != null ? ` · ${Math.round(s * 100)} %` : ""}</span></div></div><div class="meta num"><span>${fmtW(e.p)}</span><span class="d">${fmtDur(e.dur)}</span></div>${s != null ? `<div class="simbar" title="Ressemblance avec le groupe"><i><b style="width:${Math.round(s * 100)}%"></b></i><span class="num">${Math.round(s * 100)}%</span></div>` : ""}${g ? (e.doubt ? `<button class="btn sm" data-doubt="${e.id}" title="Enlever le doute">${icon("help")} pas sûr</button>` : e.pinned ? `<span class="pill ok">${icon("check")}confirmée</span>` : `<button class="btn sm" data-yes1="${e.id}">${icon("check")} Oui</button><button class="btn sm ghost" data-doubt="${e.id}">Pas sûr</button>`) : `<button class="btn sm" data-label="${e.id}">C'est…</button>`}<button class="btn sm" data-move="${e.id}">${g ? "Pas ça" : "Ranger"}</button></div>`; }).join("") || `<div class="empty">Aucune utilisation.</div>`}</div>
-      ${g && g.status !== "nouveau" ? `<div style="margin-top:12px;display:flex;justify-content:flex-end"><button class="btn sm ghost" id="b-del">${icon("trash")} Supprimer ce groupe</button></div>` : ""}
+    <div class="card"><div class="card-h"><div><h2>${tr("overlayTitle")}</h2><p>${tr("overlayDescription")}</p></div></div><div class="chart" id="ov"></div></div>
+    ${g ? `<div class="feat"><div><span>${tr("typicalPower")}</span><b>${fmtW(st.P)}</b></div><div><span>${tr("typicalDuration")}</span><b>${fmtDur(st.D)}</b></div><div><span>${tr("energyPerUse")}</span><b>${fmtKwh(st.WH / 1000)}</b></div><div><span>${tr("shape")}</span><b>${st.shape}</b></div><div><span>${tr("costSevenDays")}</span><b>${fmtEur(st.kwhWeek)}</b></div></div>
+    <div class="card"><div class="card-h"><div><h2>${tr("whatTime")}</h2><p>${tr("usesPerHour")}</p></div></div>${hourBars(st.hours, col(g))}</div>` : ""}
+    <div class="card occ"><div class="card-h"><div><h2>${tr("usesTitle")}</h2><p>${tr(g ? "leastSimilarFirst" : "assignOrCreate")}</p></div>${evs.length ? `<button class="btn sm ghost" id="b-all">${tr("selectAll")}</button>` : ""}</div>
+      <div class="list">${evs.map(e => { const s = e.sim; return `<div class="row" data-row="${e.id}"><input type="checkbox" data-sel="${e.id}" ${S.sel.has(e.id) ? "checked" : ""} aria-label="${esc(tr("select"))}">${spark(e, isAty(e) ? "var(--muted)" : col(g))}<div class="grow"><div class="t1">${fmtWhen(e.start)}</div><div class="t2">${isAty(e) ? `<span class="atyp">${icon("alert")}${tr("differsFromOthers")}</span>` : fmtKwh(e.wh / 1000)}${e.probable ? ` · <span class="muted" title="${esc(tr("probableHelp"))}">${tr("probable")}</span>` : ""}${e.hint ? ` · <span class="muted">${tr("maybe")} : ${esc(e.hint)}</span><button class="icon-btn" style="width:24px;height:24px;display:inline-grid;vertical-align:middle" data-unhint="${e.id}" title="${esc(tr("removeMaybe"))}">${icon("x")}</button>` : ""}${e.split ? ` · <span title="${esc(tr("splitFromOtherHelp"))}">${tr("splitFromOther")}</span>` : ""}<span class="monly"> · ${fmtW(e.p)} · ${fmtDur(e.dur)}${s != null ? ` · ${Math.round(s * 100)} %` : ""}</span></div></div><div class="meta num"><span>${fmtW(e.p)}</span><span class="d">${fmtDur(e.dur)}</span></div>${s != null ? `<div class="simbar" title="${esc(tr("similarity"))}"><i><b style="width:${Math.round(s * 100)}%"></b></i><span class="num">${Math.round(s * 100)}%</span></div>` : ""}${g ? (e.doubt ? `<button class="btn sm" data-doubt="${e.id}" title="${esc(tr("removeDoubt"))}">${icon("help")} ${tr("unsure")}</button>` : e.pinned ? `<span class="pill ok">${icon("check")}${tr("confirmed")}</span>` : `<button class="btn sm" data-yes1="${e.id}">${icon("check")} ${tr("yes")}</button><button class="btn sm ghost" data-doubt="${e.id}">${tr("unsure")}</button>`) : `<button class="btn sm" data-label="${e.id}">${tr("identify")}</button>`}<button class="btn sm" data-move="${e.id}">${tr(g ? "notThis" : "assign")}</button></div>`; }).join("") || `<div class="empty">${tr("noUsesPeriod")}</div>`}</div>
+      ${g && g.status !== "nouveau" ? `<div style="margin-top:12px;display:flex;justify-content:flex-end"><button class="btn sm ghost" id="b-del">${icon("trash")} ${tr("deleteGroup")}</button></div>` : ""}
     </div>
   </div>
   <div id="selbar"></div>`;
@@ -784,34 +772,34 @@ function hourRanges(hours) {
 }
 function proofBlock(g) {
   const p = g && g.proof; if (!p || !p.n) return "";
-  const reg = p.p_spread <= 0.15 ? "très régulière" : p.p_spread <= 0.3 ? "assez régulière" : "variable";
+  const reg = tr(p.p_spread <= 0.15 ? "regularVery" : p.p_spread <= 0.3 ? "regularSomewhat" : "regularVariable");
   const shapes = Object.entries(p.shapes || {}).sort((a, b) => b[1] - a[1]), sh = shapes[0];
   const hr = hourRanges(p.hours);
   const line = (ok, html) => `<div>${icon(ok ? "check" : "alert")}<span>${html}</span></div>`;
   const facts = [
-    line(p.n >= SURE.n, `Vu <b>${p.n} fois</b>, sur <b>${p.days} jour${p.days > 1 ? "s" : ""}</b> différent${p.days > 1 ? "s" : ""}`),
-    line(p.p_spread <= 0.3, `Puissance <b>${reg}</b> : entre ${fmtW(p.p_lo)} et ${fmtW(p.p_hi)} la plupart du temps`),
-    line(true, `Dure entre <b>${fmtDur(p.d_lo)}</b> et <b>${fmtDur(p.d_hi)}</b>`),
-    line(hr.pct >= 60, `<b>${hr.pct} %</b> des utilisations vers <b>${hr.txt}</b>`),
-    line(true, `${p.n - p.weekend} fois en semaine, ${p.weekend} fois le week-end`),
-    sh ? line(sh[1] / p.n >= 0.7, `Même forme de courbe ${Math.round(sh[1] / p.n * 100)} % du temps : ${SHAPE_TXT[sh[0]].toLowerCase()}`) : "",
-    line(p.coherence >= SURE.coherence, `Les utilisations se ressemblent à <b>${Math.round(p.coherence * 100)} %</b> en moyenne`),
-    ...Object.entries(p.votes || {}).map(([n, k]) => line(k >= 3, `Tu as dit « peut-être <b>${esc(n)}</b> » pour ${k} utilisation${k > 1 ? "s" : ""} sur ${p.n}`)),
+    line(p.n >= SURE.n, esc(tr("proofSeen", { count: p.n, days: p.days }))),
+    line(p.p_spread <= 0.3, esc(tr("proofPower", { regularity: reg, low: fmtW(p.p_lo), high: fmtW(p.p_hi) }))),
+    line(true, esc(tr("proofDuration", { low: fmtDur(p.d_lo), high: fmtDur(p.d_hi) }))),
+    line(hr.pct >= 60, esc(tr("proofHours", { percent: hr.pct, hours: hr.txt }))),
+    line(true, esc(tr("proofWeek", { weekday: p.n - p.weekend, weekend: p.weekend }))),
+    sh ? line(sh[1] / p.n >= 0.7, esc(tr("proofShape", { percent: Math.round(sh[1] / p.n * 100), shape: shapeText(sh[0]).toLowerCase() }))) : "",
+    line(p.coherence >= SURE.coherence, esc(tr("proofCoherence", { percent: Math.round(p.coherence * 100) }))),
+    ...Object.entries(p.votes || {}).map(([n, k]) => line(k >= 3, esc(tr("proofVote", { name: n, count: k, total: p.n })))),
   ].join("");
   const gl = (p.guesses || []).map(([l, v]) => `${esc(l)} <b>${Math.round(v * 100)} %</b>`).join(" · ");
   const miss = [];
-  if (p.n < SURE.n) miss.push(`le voir encore ${SURE.n - p.n} fois`);
-  if (p.days < SURE.days) miss.push(`le voir sur ${SURE.days - p.days} jour${SURE.days - p.days > 1 ? "s" : ""} de plus`);
-  if (p.coherence < SURE.coherence) miss.push("des utilisations qui se ressemblent davantage");
-  if ((g.hyp_score || 0) < SURE.hyp) miss.push(`une hypothèse plus nette (aujourd'hui ${Math.round((g.hyp_score || 0) * 100)} %, il faut ${SURE.hyp * 100} %)`);
-  const verdict = g.status === "valide" ? "Tu as confirmé cet appareil : il est reconnu automatiquement."
-    : g.name && !g.auto ? "Tu as donné le nom : le programme s'en sert pour reconnaître les prochaines utilisations."
-    : miss.length ? `Pas encore assez sûr pour le nommer tout seul. Il lui faut : ${miss.join(", ")}.`
-    : "Tous les critères sont réunis : le programme est sûr de lui.";
-  return `<div class="card"><div class="card-h"><div><h2>Preuves de l'analyse</h2><p>Sur quoi le programme s'appuie pour ce groupe</p></div></div>
+  if (p.n < SURE.n) miss.push(tr("missingSeen", { count: SURE.n - p.n }));
+  if (p.days < SURE.days) miss.push(tr("missingDays", { count: SURE.days - p.days }));
+  if (p.coherence < SURE.coherence) miss.push(tr("missingCoherence"));
+  if ((g.hyp_score || 0) < SURE.hyp) miss.push(tr("missingHypothesis", { current: Math.round((g.hyp_score || 0) * 100), required: SURE.hyp * 100 }));
+  const verdict = g.status === "valide" ? tr("proofValidated")
+    : g.name && !g.auto ? tr("proofNamed")
+    : miss.length ? tr("proofMissing", { missing: miss.join(", ") })
+    : tr("proofReady");
+  return `<div class="card"><div class="card-h"><div><h2>${tr("proofTitle")}</h2><p>${tr("proofDescription")}</p></div></div>
     <div class="changes">${facts}</div>
-    <div style="margin-top:14px;font-size:13px;color:var(--ink-2)">Appareils possibles : ${gl || "—"}</div>
-    <div class="banner" style="margin-top:12px">${icon(miss.length && g.status !== "valide" && !(g.name && !g.auto) ? "alert" : "check")}<div class="grow">${verdict}</div></div></div>`;
+    <div style="margin-top:14px;font-size:13px;color:var(--ink-2)">${tr("possibleAppliances")} : ${gl || "—"}</div>
+    <div class="banner" style="margin-top:12px">${icon(miss.length && g.status !== "valide" && !(g.name && !g.auto) ? "alert" : "check")}<div class="grow">${esc(verdict)}</div></div></div>`;
 }
 function hourBars(hours, color) {
   const mx = Math.max(...hours, 1);
@@ -821,7 +809,7 @@ function hourBars(hours, color) {
 function renderSelbar(gid) {
   const el = $("#selbar"); if (!el) return;
   if (!S.sel.size) { el.innerHTML = ""; return; }
-  el.innerHTML = `<div class="selbar"><b>${S.sel.size} sélectionnée${S.sel.size > 1 ? "s" : ""}</b>${gid !== "aucun" ? `<button class="btn sm" id="s-yes">${icon("check")} Oui, c'est ça</button>` : ""}<button class="btn sm" id="s-label">C'est…</button><button class="btn sm" id="s-move">${icon("move")} Déplacer vers…</button><button class="btn sm" id="s-new">${icon("plus")} Nouveau groupe</button>${gid !== "aucun" ? `<button class="btn sm" id="s-out">${icon("x")} Sortir du groupe</button>` : ""}<button class="btn sm" id="s-clr" aria-label="Désélectionner">${icon("x")}</button></div>`;
+  el.innerHTML = `<div class="selbar"><b>${tr("selected", { count: S.sel.size })}</b>${gid !== "aucun" ? `<button class="btn sm" id="s-yes">${icon("check")} ${tr("yesCorrect")}</button>` : ""}<button class="btn sm" id="s-label">${tr("identify")}</button><button class="btn sm" id="s-move">${icon("move")} ${tr("moveToMenu")}</button><button class="btn sm" id="s-new">${icon("plus")} ${tr("newGroupTitle")}</button>${gid !== "aucun" ? `<button class="btn sm" id="s-out">${icon("x")} ${tr("removeFromGroup")}</button>` : ""}<button class="btn sm" id="s-clr" aria-label="${esc(tr("deselect"))}">${icon("x")}</button></div>`;
   const ids = () => [...S.sel];
   $("#s-move").onclick = e => moveMenu(e.currentTarget, ids(), gid === "aucun" ? null : gid);
   $("#s-new").onclick = () => moveEvents(ids(), "new");
@@ -850,7 +838,7 @@ function mountGroupe(gid, q) {
   $$("[data-move]").forEach(b => b.onclick = () => moveMenu(b, [b.dataset.move], g ? gid : null));
   $$("[data-yes1]").forEach(b => b.onclick = () => confirmEvents([b.dataset.yes1]));
   bindUnhint();
-  $$("[data-doubt]").forEach(b => b.onclick = () => act({ action: "doubt", ids: [b.dataset.doubt] }, EVENTS.find(e => e.id === b.dataset.doubt)?.doubt ? "Doute enlevé" : "Noté « pas sûr » : elle reste là, mais le programme n'apprend pas dessus"));
+  $$("[data-doubt]").forEach(b => b.onclick = () => act({ action: "doubt", ids: [b.dataset.doubt] }, tr(EVENTS.find(e => e.id === b.dataset.doubt)?.doubt ? "doubtRemoved" : "doubtAdded")));
   $$("[data-label]").forEach(b => b.onclick = () => labelModal([b.dataset.label]));
   $$("[data-sel]").forEach(c => c.onchange = () => { c.checked ? S.sel.add(c.dataset.sel) : S.sel.delete(c.dataset.sel); renderSelbar(gid); });
   if ($("#b-all")) $("#b-all").onclick = () => { const all = $$("[data-sel]"); const on = all.some(c => !c.checked); all.forEach(c => { c.checked = on; on ? S.sel.add(c.dataset.sel) : S.sel.delete(c.dataset.sel); }); renderSelbar(gid); };
@@ -867,47 +855,47 @@ function pageHabitudes() {
   const known = hs.filter(hb => G(hb.gid) && G(hb.gid).name), todo = hs.filter(hb => !(G(hb.gid) && G(hb.gid).name));
   const perHour = Array(24).fill(0); EVENTS.forEach(e => { if (dayOf(e.start) >= 0) perHour[new Date(e.start).getHours()]++; });
   const mx = Math.max(...perHour, 1);
-  const rhythm = `<div style="display:grid;grid-template-columns:repeat(24,1fr);gap:3px;align-items:end;height:90px">${perHour.map((v, h) => `<div title="${h} h : ${nf1.format(v / NDAYS)} utilisation(s) par jour en moyenne" style="height:${v ? Math.max(6, v / mx * 100) : 0}%;background:var(--s1);border-radius:4px 4px 0 0;max-width:24px;justify-self:center;width:100%"></div>`).join("")}</div>
+  const rhythm = `<div style="display:grid;grid-template-columns:repeat(24,1fr);gap:3px;align-items:end;height:90px">${perHour.map((v, h) => `<div title="${esc(tr("averageUsesPerDay", { hour: h, count: nf1.format(v / NDAYS) }))}" style="height:${v ? Math.max(6, v / mx * 100) : 0}%;background:var(--s1);border-radius:4px 4px 0 0;max-width:24px;justify-self:center;width:100%"></div>`).join("")}</div>
     <div style="height:1px;background:var(--axis)"></div><div class="hours-lbl"><span>0 h</span><span>6 h</span><span>12 h</span><span>18 h</span><span>23 h</span></div>`;
   const card = hb => {
-    const g = G(hb.gid), hints = habitHints(hb);
+    const g = G(hb.gid), hints = habitHints(hb, language);
     const strip = `<div style="display:flex;gap:3px;flex-wrap:wrap">${Array.from({ length: NDAYS }, (_, d) => `<i title="${dayLabel(d)}" style="width:14px;height:14px;border-radius:3px;background:${hb.dayList.includes(d) ? "var(--s1)" : "var(--surface-2)"}"></i>`).join("")}</div>`;
     return `<div class="card hcard">
-      <div class="gtitle"><div class="gicon" style="background:${g ? col(g) : "var(--s0)"}">${icon(g ? gicon(g) : "clock")}</div><div style="flex:1;min-width:0"><div class="q">${cap(periodOf(hb.hour))}, vers ${fmtH(hb.hour)}</div><div class="muted" style="font-size:12.5px">entre ${fmtH(hb.from)} et ${fmtH(hb.to)}</div></div></div>
-      <div style="font-size:13.5px">Un appareil d'environ <b>${fmtW(hb.p)}</b> démarre pendant <b>${fmtDur(hb.dur)}</b>.</div>
-      ${(() => { const v = {}; EVENTS.filter(e => hb.ids.includes(e.id) && e.hint).forEach(e => v[e.hint] = (v[e.hint] || 0) + 1); const t = Object.entries(v).sort((a, b) => b[1] - a[1])[0]; return t ? `<div style="font-size:13px">Tu as dit « peut-être <b>${esc(t[0])}</b> » ${t[1]} fois.</div>` : ""; })()}
-      <div style="font-size:13px;color:var(--ink-2)">Vu <b>${hb.days} jours sur ${hb.nDays}</b> · ${hb.weekdays} en semaine, ${hb.weekend} le week-end</div>
+      <div class="gtitle"><div class="gicon" style="background:${g ? col(g) : "var(--s0)"}">${icon(g ? gicon(g) : "clock")}</div><div style="flex:1;min-width:0"><div class="q">${esc(tr("aroundTime", { period: cap(periodOf(hb.hour, language)), time: fmtH(hb.hour) }))}</div><div class="muted" style="font-size:12.5px">${esc(tr("betweenTimes", { from: fmtH(hb.from), to: fmtH(hb.to) }))}</div></div></div>
+      <div style="font-size:13.5px">${esc(tr("habitAppliance", { power: fmtW(hb.p), duration: fmtDur(hb.dur) }))}</div>
+      ${(() => { const v = {}; EVENTS.filter(e => hb.ids.includes(e.id) && e.hint).forEach(e => v[e.hint] = (v[e.hint] || 0) + 1); const t = Object.entries(v).sort((a, b) => b[1] - a[1])[0]; return t ? `<div style="font-size:13px">${esc(tr("habitHintVotes", { name: t[0], count: t[1] }))}</div>` : ""; })()}
+      <div style="font-size:13px;color:var(--ink-2)">${esc(tr("habitSeen", { days: hb.days, total: hb.nDays, weekdays: hb.weekdays, weekend: hb.weekend }))}</div>
       ${strip}
-      <div class="banner">${icon(g && g.name ? "check" : "help")}<div class="grow">${g && g.name ? `C'est ton « <b>${esc(g.name)}</b> ».` : hints.length ? `Peut-être : <b>${hints.join(", ")}</b> ? À toi de me dire.` : "Je ne sais pas ce que c'est. À toi de me dire."}</div></div>
-      <div class="acts"><button class="btn sm primary" data-hlabel="${hb.ids.join(",")}">C'est…</button><button class="btn sm" data-go="#/groupe/${hb.gid || "aucun"}?e=${hb.ids[0]}">Voir les utilisations</button></div>
+      <div class="banner">${icon(g && g.name ? "check" : "help")}<div class="grow">${esc(g && g.name ? tr("habitKnown", { name: g.name }) : hints.length ? tr("habitPossible", { hints: hints.join(", ") }) : tr("habitUnknown"))}</div></div>
+      <div class="acts"><button class="btn sm primary" data-hlabel="${hb.ids.join(",")}">${tr("identify")}</button><button class="btn sm" data-go="#/groupe/${hb.gid || "aucun"}?e=${hb.ids[0]}">${tr("viewUses")}</button></div>
     </div>`;
   };
   return `
-  <div class="page-h"><div><h1>${tr("habits")}</h1><p class="sub">Ce qui revient souvent à la même heure, plusieurs jours de suite. Ça aide à deviner ce que c'est.</p></div></div>
-  <div class="card"><div class="card-h"><div><h2>Le rythme de la maison</h2><p>Nombre de gros appareils allumés selon l'heure, sur ${NDAYS} jour${NDAYS > 1 ? "s" : ""}</p></div></div>${rhythm}</div>
-  ${todo.length ? `<div class="section-t"><h2>À identifier</h2><span>${todo.length}</span></div><div class="groups">${todo.map(card).join("")}</div>` : ""}
-  ${known.length ? `<div class="section-t"><h2>Déjà reconnues</h2><span>${known.length}</span></div><div class="card"><div class="list">${known.map(hb => { const g = G(hb.gid); return `<div class="row click" data-go="#/groupe/${hb.gid}"><span class="dot" style="background:${col(g)}"></span><div class="grow"><div class="t1">${esc(g.name)} · ${periodOf(hb.hour)}, vers ${fmtH(hb.hour)}</div><div class="t2">${fmtW(hb.p)} · ${fmtDur(hb.dur)} · vu ${hb.days} jours sur ${hb.nDays}</div></div><span class="pill ok">${icon("check")}reconnu</span></div>`; }).join("")}</div></div>` : ""}
+  <div class="page-h"><div><h1>${tr("habits")}</h1><p class="sub">${tr("habitsDescription")}</p></div></div>
+  <div class="card"><div class="card-h"><div><h2>${tr("homeRhythm")}</h2><p>${esc(tr("rhythmDescription", { days: NDAYS, unit: tr(NDAYS === 1 ? "dayUnitOne" : "dayUnitOther") }))}</p></div></div>${rhythm}</div>
+  ${todo.length ? `<div class="section-t"><h2>${tr("toIdentify")}</h2><span>${todo.length}</span></div><div class="groups">${todo.map(card).join("")}</div>` : ""}
+  ${known.length ? `<div class="section-t"><h2>${tr("alreadyRecognised")}</h2><span>${known.length}</span></div><div class="card"><div class="list">${known.map(hb => { const g = G(hb.gid); return `<div class="row click" data-go="#/groupe/${hb.gid}"><span class="dot" style="background:${col(g)}"></span><div class="grow"><div class="t1">${esc(g.name)} · ${esc(tr("aroundTime", { period: periodOf(hb.hour, language), time: fmtH(hb.hour) }))}</div><div class="t2">${fmtW(hb.p)} · ${fmtDur(hb.dur)} · ${esc(tr("habitSeenShort", { days: hb.days, total: hb.nDays }))}</div></div><span class="pill ok">${icon("check")}${tr("recognised")}</span></div>`; }).join("")}</div></div>` : ""}
   ${hs.length ? ""
-    : `<div class="card" style="margin-top:16px"><h2>Pas encore d'habitude</h2><p class="sub">Pour parler d'habitude, il faut voir le même appareil, à la même heure (à 45 minutes près), au moins ${HABIT.MIN_DAYS} jours différents. ${NDAYS} jour${NDAYS > 1 ? "s" : ""} observé${NDAYS > 1 ? "s" : ""} pour l'instant : reviens dans quelques jours.</p></div>`}`;
+    : `<div class="card" style="margin-top:16px"><h2>${tr("noHabits")}</h2><p class="sub">${esc(tr("noHabitsDescription", { minimum: HABIT.MIN_DAYS, days: NDAYS, unit: tr(NDAYS === 1 ? "dayUnitOne" : "dayUnitOther") }))}</p></div>`}`;
 }
 
 // ---------- Page : Carte des ressemblances
 function pageCarte() {
   return `
-  <div class="page-h"><div><h1>${tr("similarityMap")}</h1><p class="sub">Chaque point est une utilisation d'un appareil. Plus deux points sont proches, plus ils se ressemblent. Les zones sont les groupes trouvés par le programme.</p></div></div>
-  <div class="card"><div class="card-h"><div><h2>Puissance et durée de chaque utilisation</h2><p>Clique sur un point pour ouvrir son groupe. Survole la légende pour isoler un groupe.</p></div></div>
+  <div class="page-h"><div><h1>${tr("similarityMap")}</h1><p class="sub">${tr("mapDescription")}</p></div></div>
+  <div class="card"><div class="card-h"><div><h2>${tr("mapChartTitle")}</h2><p>${tr("mapChartHelp")}</p></div></div>
     <div class="legend" id="sclegend" style="margin-bottom:10px"></div>
     <div class="chart" id="scatter"></div>
   </div>
   <div class="grid g-2" style="margin-top:16px">
-    <div class="card"><h2>Ce que le programme compare</h2><p class="sub" style="margin-bottom:12px">Deux utilisations sont « proches » s'ils se ressemblent sur ces critères. Le poids indique leur importance.</p>
-      ${[["Puissance consommée", 45], ["Durée", 20], ["Forme de la courbe (constante, qui varie, qui s'allume et s'éteint)", 25], ["Heure", 10]].map(([l, w]) => `<div class="hbar" style="grid-template-columns:1fr 90px 40px"><div class="nm"><span>${l}</span></div><div class="trk"><div class="fill" style="width:${w / 45 * 100}%;background:var(--s1)"></div></div><div class="v">${w} %</div></div>`).join("")}
+    <div class="card"><h2>${tr("mapCompare")}</h2><p class="sub" style="margin-bottom:12px">${tr("mapCompareHelp")}</p>
+      ${[["consumedPower", 45], ["duration", 20], ["curveShape", 25], ["hour", 10]].map(([l, w]) => `<div class="hbar" style="grid-template-columns:1fr 90px 40px"><div class="nm"><span>${tr(l)}</span></div><div class="trk"><div class="fill" style="width:${w / 45 * 100}%;background:var(--s1)"></div></div><div class="v">${w} %</div></div>`).join("")}
     </div>
-    <div class="card"><h2>Ses limites</h2><div class="changes" style="margin-top:10px">
-      <div>${icon("alert")}<span>Le compteur donne une valeur toutes les ~13 s : un appareil allumé moins de 30 s est invisible.</span></div>
-      <div>${icon("alert")}<span>Les petits appareils (box, chargeurs, lampes) sont comptés dans « Toujours allumé ».</span></div>
-      <div>${icon("alert")}<span>Deux appareils de même puissance (chauffage soufflant et bouilloire) peuvent se confondre. Tes corrections servent à ça.</span></div>
-      <div>${icon("alert")}<span>Quand deux appareils tournent en même temps, le programme les sépare d'après leurs sauts de puissance. Avec des plaques qui changent souvent de puissance, il n'y arrive pas toujours.</span></div>
+    <div class="card"><h2>${tr("limitations")}</h2><div class="changes" style="margin-top:10px">
+      <div>${icon("alert")}<span>${tr("limitSampling")}</span></div>
+      <div>${icon("alert")}<span>${tr("limitSmall")}</span></div>
+      <div>${icon("alert")}<span>${tr("limitSimilar")}</span></div>
+      <div>${icon("alert")}<span>${tr("limitOverlap")}</span></div>
     </div></div>
   </div>`;
 }
@@ -930,17 +918,17 @@ function drawScatter(el) {
     svg += `<ellipse data-g="${g.id}" cx="${mx}" cy="${my}" rx="${Math.max(14, sx * 2 + 8)}" ry="${Math.max(12, sy * 2 + 8)}" style="fill:${col(g)};opacity:.1"/>`;
   }
   for (const e of EVENTS) svg += `<circle data-e="${e.id}" data-g="${e.gid || "aucun"}" cx="${x(e.dur).toFixed(1)}" cy="${y(e.p).toFixed(1)}" r="5" style="fill:${col(G(e.gid))};stroke:var(--surface);stroke-width:2;cursor:pointer"/>`;
-  if (!EVENTS.length) svg += `<text x="${m.l + pw / 2}" y="${m.t + ph / 2}" text-anchor="middle" style="font-size:13px;fill:var(--muted)">Aucune utilisation pour l'instant</text>`;
+  if (!EVENTS.length) svg += `<text x="${m.l + pw / 2}" y="${m.t + ph / 2}" text-anchor="middle" style="font-size:13px;fill:var(--muted)">${tr("noUsesYet")}</text>`;
   el.innerHTML = svg + `</svg>`;
   $$("circle", el).forEach(c => {
     const e = EVENTS.find(x => x.id === c.dataset.e);
-    c.addEventListener("pointerenter", ev => { c.setAttribute("r", 7); showTip(ev, `<div class="t">${esc(gname(G(e.gid)))}</div><div class="r"><span>Quand</span><b>${fmtWhen(e.start)}</b></div><div class="r"><span>Puissance</span><b>${fmtW(e.p)}</b></div><div class="r"><span>Durée</span><b>${fmtDur(e.dur)}</b></div>`); });
+    c.addEventListener("pointerenter", ev => { c.setAttribute("r", 7); showTip(ev, `<div class="t">${esc(gname(G(e.gid)))}</div><div class="r"><span>${tr("when")}</span><b>${fmtWhen(e.start)}</b></div><div class="r"><span>${tr("power")}</span><b>${fmtW(e.p)}</b></div><div class="r"><span>${tr("duration")}</span><b>${fmtDur(e.dur)}</b></div>`); });
     c.addEventListener("pointermove", moveTip);
     c.addEventListener("pointerleave", () => { c.setAttribute("r", 5); hideTip(); });
     c.addEventListener("click", () => { hideTip(); go(`#/groupe/${e.gid || "aucun"}?e=${e.id}`); });
   });
   const lg = $("#sclegend");
-  lg.innerHTML = gs.map(g => `<span class="chip" data-f="${g.id}"><i class="dot" style="background:${col(g)}"></i>${esc(gname(g))}</span>`).join("") + (members(null).length ? `<span class="chip" data-f="aucun"><i class="dot" style="background:var(--unk)"></i>Pas reconnu</span>` : "");
+  lg.innerHTML = gs.map(g => `<span class="chip" data-f="${g.id}"><i class="dot" style="background:${col(g)}"></i>${esc(gname(g))}</span>`).join("") + (members(null).length ? `<span class="chip" data-f="aucun"><i class="dot" style="background:var(--unk)"></i>${tr("unknown")}</span>` : "");
   const focus = f => $$("[data-g]", el).forEach(n => n.style.opacity = !f ? "" : n.dataset.g === f ? "" : (n.tagName === "ellipse" ? ".02" : ".12"));
   $$("[data-f]", lg).forEach(c => { c.onpointerenter = () => focus(c.dataset.f); c.onpointerleave = () => focus(null); c.onclick = () => go("#/groupe/" + c.dataset.f); });
 }
@@ -956,13 +944,13 @@ function catCard(c, i) {
   const mem = S.groups.filter(g => g.cat === c.id);
   const days = Math.min(7, NDAYS), d0 = NDAYS - days;
   let wk = 0; for (const g of mem) for (const e of members(g.id)) if (dayOf(e.start) >= d0) wk += e.wh / 1000;
-  const btn = c.dash ? `<button class="btn sm" data-cat-off="${c.id}">Retirer du tableau Énergie</button>`
-    : `<button class="btn sm ${mem.length ? "primary" : ""}" data-cat-on="${c.id}" ${mem.length ? "" : "disabled"}>Ajouter au tableau Énergie</button>`;
+  const btn = c.dash ? `<button class="btn sm" data-cat-off="${c.id}">${tr("removeEnergy")}</button>`
+    : `<button class="btn sm ${mem.length ? "primary" : ""}" data-cat-on="${c.id}" ${mem.length ? "" : "disabled"}>${tr("addEnergy")}</button>`;
   return `<div class="card stack" style="gap:12px">
-    <div class="dev-h"><div class="gicon" style="background:${catCol(c.id)}">${icon("sensor")}</div><div class="grow"><div style="font-weight:600;font-size:15px">${esc(c.name)}</div><div class="muted" style="font-size:12.5px">${mem.length ? mem.map(g => esc(gname(g))).join(" · ") : "Aucun appareil pour l'instant : choisis-la dans la carte d'un appareil."}</div></div>${c.dash ? `<span class="pill ok">${icon("check")}Dans le tableau Énergie</span>` : ""}</div>
-    <div class="kv"><div><span>7 jours</span><b>${fmtKwh(wk)}</b></div><div><span>Coût</span><b>${fmtEur(wk)}</b></div><div><span>En ce moment</span><b>${fmtW(c.power || 0)}</b></div>${c.dash ? `<div><span>Depuis l'ajout</span><b>${fmtKwh(c.total || 0)}</b></div>` : ""}</div>
-    <p class="sub" style="font-size:12.5px;margin:0">Ses appareils sont toujours reconnus un par un, mais comptés ensemble : s'il les confond entre eux, le total reste juste. ${c.dash ? "Dans le tableau Énergie, ils n'apparaissent qu'ici (pas une deuxième fois chacun)." : "Compté dans le tableau Énergie à partir du moment où tu l'ajoutes."}</p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">${btn}<button class="btn sm ghost" data-cat-ren="${c.id}">${icon("edit")} Renommer</button><button class="btn sm ghost" data-cat-del="${c.id}">${icon("x")} Supprimer</button></div>
+    <div class="dev-h"><div class="gicon" style="background:${catCol(c.id)}">${icon("sensor")}</div><div class="grow"><div style="font-weight:600;font-size:15px">${esc(c.name)}</div><div class="muted" style="font-size:12.5px">${mem.length ? mem.map(g => esc(gname(g))).join(" · ") : tr("noCategoryAppliances")}</div></div>${c.dash ? `<span class="pill ok">${icon("check")}${tr("energyDashboard")}</span>` : ""}</div>
+    <div class="kv"><div><span>${tr("sevenDays")}</span><b>${fmtKwh(wk)}</b></div><div><span>${tr("cost")}</span><b>${fmtEur(wk)}</b></div><div><span>${tr("currently")}</span><b>${fmtW(c.power || 0)}</b></div>${c.dash ? `<div><span>${tr("sinceAdded")}</span><b>${fmtKwh(c.total || 0)}</b></div>` : ""}</div>
+    <p class="sub" style="font-size:12.5px;margin:0">${tr("categoryDescription")} ${tr(c.dash ? "categoryInEnergy" : "categoryNotInEnergy")}</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${btn}<button class="btn sm ghost" data-cat-ren="${c.id}">${icon("edit")} ${tr("rename")}</button><button class="btn sm ghost" data-cat-del="${c.id}">${icon("x")} ${tr("delete")}</button></div>
   </div>`;
 }
 function energyLogCard() {
@@ -983,7 +971,7 @@ function energyLogCard() {
 }
 function catsBlock() {
   const cs = (S.status.categories || []);
-  return `<div class="card-h" style="margin:0 0 10px"><div><h2>Catégories</h2><p>Des appareils comptés ensemble, comme tu veux (Électroménager, Cuisine…). Un appareil n'est que dans une seule catégorie.</p></div><button class="btn sm" id="b-cat-new">${icon("plus")} Nouvelle catégorie</button></div>
+  return `<div class="card-h" style="margin:0 0 10px"><div><h2>${tr("categories")}</h2><p>${tr("categoriesDescription")}</p></div><button class="btn sm" id="b-cat-new">${icon("plus")} ${tr("createCategory")}</button></div>
   <div class="groups" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr));margin-bottom:22px">${cs.map(catCard).join("")}</div>
   <h2 style="margin:0 0 10px">${tr("appliances")}</h2>`;
 }
@@ -994,38 +982,38 @@ function sharedBlock() {
   return plugs.map(pl => {
     const names = pl.apps.map(a => a.name);
     const o = pl.open;
-    const now = o ? `<div class="banner">${icon("clock")}<div class="grow">En marche depuis ${fmtHM(o.start * 1000)} · ${fmtW(o.power)} · ${o.guess ? `c'est sans doute <b>${esc(o.guess)}</b>` : "trop tôt pour dire lequel"}</div></div>` : "";
+    const now = o ? `<div class="banner">${icon("clock")}<div class="grow">${esc(tr("sharedRunningSince", { time: fmtHM(o.start * 1000), power: fmtW(o.power) }))} · ${esc(o.guess ? tr("sharedProbably", { name: o.guess }) : tr("sharedTooSoon"))}</div></div>` : "";
     const apps = pl.apps.map(a => `<div class="card" style="padding:12px;box-shadow:none">
-        <div class="dev-h"><div class="gicon" style="background:var(--good)">${icon(iconFor(a.name))}</div><div class="grow"><div style="font-weight:600">${esc(a.name)}${a.running ? ` <span class="pill ok">en marche</span>` : ""}</div><div class="muted" style="font-size:12.5px">${a.n} programme${a.n > 1 ? "s" : ""} reconnu${a.n > 1 ? "s" : ""}</div></div></div>
-        <div class="kv" style="margin-top:10px"><div><span>7 jours</span><b>${fmtKwh(a.kwh7)}</b></div><div><span>Coût</span><b>${fmtEur(a.kwh7)}</b></div><div><span>Depuis le début</span><b>${fmtKwh(a.kwh)}</b></div></div>
-        <div class="ent" style="margin-top:10px">${(a.entities || []).map(id => `<div><b>${esc(id)}</b><span>${esc(stateOf(id))}</span></div>`).join("") || "<div>Capteurs en cours de création…</div>"}</div>
-        <div style="margin-top:10px">${a.dash ? `<button class="btn sm" data-sh-dash="${esc(a.key)}" data-on="0">${icon("x")} Retirer du tableau Énergie</button>` : `<button class="btn sm primary" data-sh-dash="${esc(a.key)}" data-on="1">${icon("plus")} Ajouter au tableau Énergie</button>`}</div>
+        <div class="dev-h"><div class="gicon" style="background:var(--good)">${icon(iconFor(a.name))}</div><div class="grow"><div style="font-weight:600">${esc(a.name)}${a.running ? ` <span class="pill ok">${tr("running")}</span>` : ""}</div><div class="muted" style="font-size:12.5px">${tr("sharedProgrammeCount", { count: a.n })}</div></div></div>
+        <div class="kv" style="margin-top:10px"><div><span>${tr("sevenDays")}</span><b>${fmtKwh(a.kwh7)}</b></div><div><span>${tr("cost")}</span><b>${fmtEur(a.kwh7)}</b></div><div><span>${tr("sinceStart")}</span><b>${fmtKwh(a.kwh)}</b></div></div>
+        <div class="ent" style="margin-top:10px">${(a.entities || []).map(id => `<div><b>${esc(id)}</b><span>${esc(stateOf(id))}</span></div>`).join("") || `<div>${tr("sensorsCreating")}</div>`}</div>
+        <div style="margin-top:10px">${a.dash ? `<button class="btn sm" data-sh-dash="${esc(a.key)}" data-on="0">${icon("x")} ${tr("removeEnergy")}</button>` : `<button class="btn sm primary" data-sh-dash="${esc(a.key)}" data-on="1">${icon("plus")} ${tr("addEnergy")}</button>`}</div>
       </div>`).join("");
     const runs = pl.runs.map(r => {
       const st = r.user ? `<span class="pill ok">${icon("check")}${esc(r.name)}</span>`
         : r.name ? `<span class="muted">${esc(r.name)} · ${Math.round(r.conf * 100)} %</span>`
-        : r.guess ? `<span class="atyp">peut-être ${esc(r.guess)} ?</span>` : `<span class="atyp">${icon("help")}à confirmer</span>`;
+        : r.guess ? `<span class="atyp">${tr("maybe")} ${esc(r.guess)} ?</span>` : `<span class="atyp">${icon("help")}${tr("needsConfirmation")}</span>`;
       const btns = names.map(n => `<button class="btn sm ${(r.user && r.name === n) ? "primary" : ""}" data-sh-run="${r.id}" data-name="${esc(n)}" ${(r.user && r.name === n) ? "disabled" : ""}>${esc(n)}</button>`).join("");
       return `<div class="row"><div class="grow"><div class="t1">${fmtWhen(r.start * 1000)}</div><div class="t2">${fmtDur(r.D)} · ${fmtKwh(r.wh / 1000)} · ${st}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${btns}</div></div>`;
-    }).join("") || `<div class="empty">Aucun programme terminé pour l'instant : le premier apparaîtra ici dès qu'il sera fini.</div>`;
+    }).join("") || `<div class="empty">${tr("noSharedRuns")}</div>`;
     return `<div class="card stack" style="gap:14px;margin-bottom:16px">
-      <div class="card-h"><div><h2>${icon("plug")} Prise partagée : ${esc(pl.name)}</h2><p>${names.map(esc).join(" ou ")} : jamais en même temps. Empreinte lit la courbe de la prise et reconnaît lequel a tourné. Un clic sur le bon nom corrige, et il apprend.</p></div><span class="pill">${fmtW(pl.power)} en ce moment</span></div>
+      <div class="card-h"><div><h2>${icon("plug")} ${esc(tr("sharedPlug", { name: pl.name }))}</h2><p>${esc(tr("sharedDescription", { names: names.join(` ${tr("or")} `) }))}</p></div><span class="pill">${fmtW(pl.power)} · ${tr("currently")}</span></div>
       ${now}
       <div class="groups" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">${apps}</div>
-      <div><p class="sub" style="font-size:12.5px;margin:0 0 6px">Derniers programmes</p><div class="list">${runs}</div></div>
+      <div><p class="sub" style="font-size:12.5px;margin:0 0 6px">${tr("latestProgrammes")}</p><div class="list">${runs}</div></div>
     </div>`;
   }).join("");
 }
 function bindShared() {
-  $$("[data-sh-run]").forEach(b => b.onclick = () => act({ action: "shared_label", rid: b.dataset.shRun, name: b.dataset.name }, `Noté : « ${b.dataset.name} ». Les programmes qui lui ressemblent suivent`));
-  $$("[data-sh-dash]").forEach(b => b.onclick = () => act({ action: "shared_dash", key: b.dataset.shDash, on: b.dataset.on === "1" }, b.dataset.on === "1" ? "Ajouté au tableau Énergie" : "Retiré du tableau Énergie"));
+  $$("[data-sh-run]").forEach(b => b.onclick = () => act({ action: "shared_label", rid: b.dataset.shRun, name: b.dataset.name }, tr("sharedSaved", { name: b.dataset.name })));
+  $$("[data-sh-dash]").forEach(b => b.onclick = () => act({ action: "shared_dash", key: b.dataset.shDash, on: b.dataset.on === "1" }, tr(b.dataset.on === "1" ? "addedEnergy" : "removedEnergy")));
 }
 
 function pageAppareils() {
   const gs = S.groups.filter(g => g.name || g.status === "valide").sort((a, b) => (a.status === "valide" ? 0 : 1) - (b.status === "valide" ? 0 : 1) || gstats(b.id).kwhWeek - gstats(a.id).kwhWeek);
-  if (!gs.length) return `<div class="page-h"><div><h1>${tr("appliances")}</h1><p class="sub">Les appareils que tu as nommés apparaîtront ici.</p></div></div>${sharedBlock()}<div class="card empty">Aucun appareil nommé pour l'instant. Commence par les Découvertes.</div>`;
+  if (!gs.length) return `<div class="page-h"><div><h1>${tr("appliances")}</h1><p class="sub">${tr("appliancesEmptyIntro")}</p></div></div>${sharedBlock()}<div class="card empty">${tr("appliancesEmpty")}</div>`;
   return `
-  <div class="page-h"><div><h1>${tr("appliances")}</h1><p class="sub">Les appareils que tu as nommés. Ceux qui sont validés ont leurs capteurs dans Home Assistant.</p></div></div>
+  <div class="page-h"><div><h1>${tr("appliances")}</h1><p class="sub">${tr("appliancesDescription")}</p></div></div>
   ${energyLogCard()}
   ${sharedBlock()}
   ${catsBlock()}
@@ -1034,17 +1022,17 @@ function pageAppareils() {
     const perDay = Array(days).fill(0); st.m.forEach(e => { const d = dayOf(e.start) - d0; if (d >= 0) perDay[d] += e.wh / 1000; });
     const mx = Math.max(...perDay, 0.01);
     return `<div class="card stack" style="gap:14px">
-      <div class="dev-h"><div class="gicon" style="background:${col(g)}">${icon(gicon(g))}</div><div class="grow"><div style="font-weight:600;font-size:15px">${esc(gname(g))}</div><div class="muted" style="font-size:12.5px">Dernière marche : ${st.last ? fmtWhen(st.last).toLowerCase() : "—"}</div></div>${g.status === "valide" ? `<span class="pill ok">${icon("sensor")}Capteur actif</span>` : `<span class="pill">En apprentissage</span>`}</div>
-      <div class="kv"><div><span>7 jours</span><b>${fmtKwh(st.kwhWeek)}</b></div><div><span>Coût</span><b>${fmtEur(st.kwhWeek)}</b></div><div><span>Utilisations</span><b>${st.n}</b></div><div><span>Puissance</span><b>${fmtW(st.P)}</b></div></div>
+      <div class="dev-h"><div class="gicon" style="background:${col(g)}">${icon(gicon(g))}</div><div class="grow"><div style="font-weight:600;font-size:15px">${esc(gname(g))}</div><div class="muted" style="font-size:12.5px">${tr("lastRun")} : ${st.last ? fmtWhen(st.last) : "—"}</div></div>${g.status === "valide" ? `<span class="pill ok">${icon("sensor")}${tr("sensorActive")}</span>` : `<span class="pill">${tr("learning")}</span>`}</div>
+      <div class="kv"><div><span>${tr("sevenDays")}</span><b>${fmtKwh(st.kwhWeek)}</b></div><div><span>${tr("cost")}</span><b>${fmtEur(st.kwhWeek)}</b></div><div><span>${tr("usesTitle")}</span><b>${st.n}</b></div><div><span>${tr("power")}</span><b>${fmtW(st.P)}</b></div></div>
       <div><div style="display:grid;grid-template-columns:repeat(${days},1fr);gap:6px;align-items:end;height:60px">${perDay.map((v, i) => `<div title="${dayLabel(d0 + i)} : ${fmtKwh(v)}" style="height:${v ? Math.max(5, v / mx * 100) : 0}%;background:${col(g)};border-radius:4px 4px 0 0;width:100%;max-width:24px;justify-self:center"></div>`).join("")}</div><div style="height:1px;background:var(--axis)"></div>
         <div style="display:grid;grid-template-columns:repeat(${days},1fr);font-size:10.5px;color:var(--muted);text-align:center;margin-top:3px">${perDay.map((v, i) => `<span>${dfDay.format(dayStartMs(d0 + i)).split(" ")[0].replace(".", "")}</span>`).join("")}</div></div>
       ${confBar(st.conf, g)}
-      <label class="muted" style="display:flex;gap:8px;align-items:center;font-size:13px">Catégorie <select data-cat-of="${g.id}" style="font:inherit;padding:4px 8px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--ink)"><option value="">Aucune</option>${(S.status.categories || []).map(c => `<option value="${c.id}" ${g.cat === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
+      <label class="muted" style="display:flex;gap:8px;align-items:center;font-size:13px">${tr("category")} <select data-cat-of="${g.id}" style="font:inherit;padding:4px 8px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--ink)"><option value="">${tr("noCategory")}</option>${(S.status.categories || []).map(c => `<option value="${c.id}" ${g.cat === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
       ${((S.status.categories || []).find(c => c.id === g.cat) || {}).dash
-        ? `<div class="banner">${icon("check")}<div class="grow">Compté dans le tableau Énergie avec « <b>${esc(((S.status.categories || []).find(c => c.id === g.cat) || {}).name)}</b> », pas une deuxième fois tout seul. Pour l'y mettre à part, change sa catégorie en « Aucune ».</div></div>`
+        ? `<div class="banner">${icon("check")}<div class="grow">${esc(tr("categoryCounted", { name: ((S.status.categories || []).find(c => c.id === g.cat) || {}).name }))}</div></div>`
         : g.status === "valide" ? energyBlock(g) : ""}
-      ${g.status === "valide" ? `<div class="ent">${(g.entities || []).map(id => `<div><b>${esc(id)}</b><span>${esc(stateOf(id))}</span></div>`).join("") || "<div>Capteurs en cours de création…</div>"}</div>`
-        : `<div style="display:flex;gap:8px"><a class="btn sm" href="#/groupe/${g.id}">Voir les utilisations</a><button class="btn sm primary" data-val="${g.id}">${icon("check")} Valider</button></div>`}
+      ${g.status === "valide" ? `<div class="ent">${(g.entities || []).map(id => `<div><b>${esc(id)}</b><span>${esc(stateOf(id))}</span></div>`).join("") || `<div>${tr("sensorsCreating")}</div>`}</div>`
+        : `<div style="display:flex;gap:8px"><a class="btn sm" href="#/groupe/${g.id}">${tr("viewUses")}</a><button class="btn sm primary" data-val="${g.id}">${icon("check")} ${tr("validate")}</button></div>`}
     </div>`;
   }).join("")}</div>`;
 }

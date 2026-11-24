@@ -1,7 +1,7 @@
 """Constantes d'Empreinte."""
 
 DOMAIN = "empreinte"
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 CONF_POWER_ENTITY = "power_entity"        # la puissance de toute la maison (W) : le seul réglage obligatoire
 CONF_LANGUAGE = "language"
 LANGUAGES = ("fr", "en", "it")

@@ -1,6 +1,7 @@
 // Recherche d'habitudes : un appareil de même puissance qui démarre à peu près à la même heure,
 // plusieurs jours différents. Fonctions pures, testables sans Home Assistant.
 
+const { translate } = await import(new URL("i18n.js" + new URL(import.meta.url).search, import.meta.url).href);
 const circ = (a, b) => { const d = Math.abs(a - b) % 24; return Math.min(d, 24 - d); };
 const hourOf = ms => { const d = new Date(ms); return d.getHours() + d.getMinutes() / 60; };
 const median = a => { const s = [...a].sort((x, y) => x - y); return s.length ? s[s.length >> 1] : 0; };
@@ -62,26 +63,24 @@ function summarize(ms, nDays) {
   };
 }
 
-export function periodOf(h) {
-  if (h < 5) return "la nuit";
-  if (h < 10.5) return "le matin";
-  if (h < 14.5) return "vers midi";
-  if (h < 18) return "l'après-midi";
-  if (h < 22) return "le soir";
-  return "en fin de soirée";
+export function periodOf(h, language = "fr") {
+  const key = h < 5 ? "habitPeriodNight" : h < 10.5 ? "habitPeriodMorning"
+    : h < 14.5 ? "habitPeriodMidday" : h < 18 ? "habitPeriodAfternoon"
+    : h < 22 ? "habitPeriodEvening" : "habitPeriodLate";
+  return translate(language, key);
 }
 
 // Pistes selon l'heure, la puissance et la durée. Ce sont des questions, jamais des certitudes.
-export function habitHints(hb) {
+export function habitHints(hb, language = "fr") {
   const h = hb.hour, kw = hb.p / 1000, min = hb.dur / 60;
   const morning = h >= 5 && h < 10.5, meal = (h >= 11 && h < 14.5) || (h >= 18.5 && h < 21.5), evening = h >= 18 && h < 24;
   const out = [];
-  if (kw >= 1.7 && kw <= 2.6 && min <= 6) out.push("bouilloire");
-  if (kw >= 1 && kw <= 1.7 && min <= 5 && morning) out.push("machine à café", "sèche-cheveux");
-  if (kw >= 0.7 && kw <= 1.3 && min <= 5 && morning) out.push("grille-pain");
-  if (kw >= 0.7 && kw <= 1.6 && min <= 10 && meal) out.push("micro-ondes");
-  if (kw >= 1 && min >= 8 && min <= 90 && meal) out.push("plaques de cuisson", "four");
-  if (kw >= 0.7 && kw <= 2.5 && min >= 5 && min <= 40 && (morning || evening)) out.push("chauffage de salle de bain");
-  if (kw >= 1.7 && min >= 10 && !meal && !(morning && min < 40)) out.push("lave-linge", "lave-vaisselle");
-  return [...new Set(out)].slice(0, 3);
+  if (kw >= 1.7 && kw <= 2.6 && min <= 6) out.push("hintKettle");
+  if (kw >= 1 && kw <= 1.7 && min <= 5 && morning) out.push("hintCoffee", "hintHairdryer");
+  if (kw >= 0.7 && kw <= 1.3 && min <= 5 && morning) out.push("hintToaster");
+  if (kw >= 0.7 && kw <= 1.6 && min <= 10 && meal) out.push("hintMicrowave");
+  if (kw >= 1 && min >= 8 && min <= 90 && meal) out.push("hintHob", "hintOven");
+  if (kw >= 0.7 && kw <= 2.5 && min >= 5 && min <= 40 && (morning || evening)) out.push("hintBathroomHeater");
+  if (kw >= 1.7 && min >= 10 && !meal && !(morning && min < 40)) out.push("hintWasher", "hintDishwasher");
+  return [...new Set(out)].slice(0, 3).map(key => translate(language, key));
 }

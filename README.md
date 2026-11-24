@@ -5,145 +5,121 @@
 <h1 align="center">Empreinte</h1>
 
 <p align="center">
-  <b>Savoir ce que consomme chaque appareil de la maison, à partir du seul compteur Linky.</b><br>
-  Détection d'appareils (NILM) 100 % locale pour Home Assistant : four, plaques, bouilloire, lave-vaisselle, chauffage…
+  <b>See what every appliance in your home consumes, from a single whole-house power sensor.</b><br>
+  100 % local appliance detection (NILM) for Home Assistant: oven, hob, kettle, dishwasher, heater…
 </p>
 
 <p align="center">
-  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=nodyxstudio&repository=empreinte-nilm-home-assistant&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Ouvrir dans HACS"></a>
+  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=nodyxstudio&repository=empreinte-nilm-home-assistant&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open in HACS"></a>
 </p>
 
 <p align="center">
   <a href="https://github.com/nodyxstudio/empreinte-nilm-home-assistant/releases"><img src="https://img.shields.io/github/v/release/nodyxstudio/empreinte-nilm-home-assistant?label=version" alt="Version"></a>
   <a href="https://hacs.xyz"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5.svg" alt="HACS"></a>
   <a href="https://github.com/nodyxstudio/empreinte-nilm-home-assistant/actions/workflows/tests.yml"><img src="https://github.com/nodyxstudio/empreinte-nilm-home-assistant/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/nodyxstudio/empreinte-nilm-home-assistant" alt="Licence MIT"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/nodyxstudio/empreinte-nilm-home-assistant" alt="MIT licence"></a>
 </p>
 
 <p align="center">
-  <b>Français</b> · <a href="README.en.md">English</a>
+  <a href="README.md">Français</a> · <b>English</b>
 </p>
 
 ---
 
-Empreinte regarde la consommation de **toute la maison** (celle que donne le compteur Linky, un Shelly EM ou une pince ampèremétrique) et **reconnaît les gros appareils** qui s'allument. Pas de prise connectée à acheter, pas de cloud : tout est calculé dans votre Home Assistant, et rien ne sort de chez vous.
+Empreinte (French for *footprint*) watches the power of your **whole house** (a French Linky meter, a Shelly EM, a clamp meter…) and **recognises the big appliances** as they switch on. No smart plug to buy, no cloud: everything runs inside your Home Assistant and nothing leaves your home.
 
-![Une journée : chaque couleur est un appareil reconnu](docs/images/apercu.png)
+> **Note:** the Empreinte panel and its texts are currently in **French**. The setup screens are in English and French. An English panel is planned; contributions are welcome.
 
-<sub>Images faites avec une maison imaginaire.</sub>
+![One day: each colour is a recognised appliance](docs/images/apercu.png)
 
-## Pourquoi Empreinte ?
+<sub>Screenshots made with an imaginary house.</sub>
 
-- **Un seul capteur suffit** : la puissance de la maison en direct. Linky (ZLinky, Lixee, TIC), Shelly EM, Shelly 3EM, pince Zigbee…
-- **Il apprend de vous** : vous nommez un appareil une fois ou deux, il le reconnaît ensuite tout seul, de mieux en mieux.
-- **Le tableau Énergie de Home Assistant se remplit** : chaque appareil reconnu devient un capteur de puissance et d'énergie, que vous ajoutez d'un clic.
-- **Des économies chiffrées** : veilles, chauffage, programmes du lave-vaisselle, clim. Les conseils sont calculés sur votre vraie consommation, en euros par an.
-- **100 % local et privé** : aucun compte, aucun serveur, aucune donnée envoyée. Désinstaller supprime tout.
-- **Libre et gratuit** (licence MIT).
+## Why Empreinte?
 
-## Comment ça marche
+- **One sensor is enough**: the live power of the house. Linky (ZLinky, Lixee, TIC), Shelly EM / 3EM, Zigbee clamp…
+- **It learns from you**: name an appliance once or twice, then it recognises it on its own, better and better.
+- **Fills the Home Assistant Energy dashboard**: each recognised appliance becomes a power and energy sensor you add in one click.
+- **Savings in euros**: standby, heating, dishwasher programmes, air conditioning. The tips are computed from your real consumption.
+- **100 % local and private**: no account, no server, no data sent anywhere. Uninstalling removes everything.
+- **Free and open source** (MIT).
 
-1. **Il repère.** Chaque montée d'un coup de plus de 350 W, c'est quelque chose qui s'allume. Empreinte note sa puissance, sa durée et sa forme : stable (bouilloire), thermostat (four), paliers (plaques).
-2. **Il regroupe.** Les allumages qui se ressemblent forment des « découvertes » : « environ 2 kW, 3 minutes, plusieurs fois par jour ».
-3. **Vous nommez.** D'un clic : « c'est la bouilloire ». Vous pouvez aussi dire en direct « là, c'est le lave-vaisselle », et il le suit jusqu'à la fin, même au milieu d'autres appareils (sauf les paliers faibles, nommés à la fin).
-4. **Il reconnaît.** Il affiche sa certitude en pourcentage. Quand il est assez sûr, **vous** décidez de l'ajouter au tableau Énergie.
+## How it works
 
-### Vous gardez la main
+1. **Detect.** Every sudden rise of more than 350 W means something switched on. Empreinte records its power, duration and shape: steady (kettle), thermostat (oven), steps (hob).
+2. **Group.** Similar switch-ons become "discoveries": "about 2 kW, 3 minutes, several times a day".
+3. **You name.** One click: "it's the kettle". You can also say live "this is the dishwasher right now", and it tracks it to the end, even among other appliances (except low-power plateaus, which are named after the event ends).
+4. **Recognise.** It shows its confidence as a percentage. When it is sure enough, **you** decide to add it to the Energy dashboard.
 
-Vos appareils ne sont pas dans la liste (pompe de piscine, aquarium, spa, borne de recharge…) ? **Écrivez simplement leur nom** : ça crée un nouvel appareil, qu'Empreinte apprend comme les autres.
+### You stay in control
 
-Rien n'est figé : un appareil ajouté se **renomme**, se **supprime**, se **fusionne** avec un autre ou se **sépare** en deux. Une utilisation mal rangée se **déplace** (« Non, c'est… »), et Empreinte refait ses calculs sur le passé. Un appareil ou une catégorie se **retire du tableau Énergie** d'un clic, et la dernière action s'**annule**.
+Your appliance is not in the list (pool pump, aquarium, hot tub, EV charger…)? **Just type its name**: it becomes a new appliance that Empreinte learns like the others.
 
-![Les découvertes : les groupes trouvés tout seuls](docs/images/decouvertes.png)
-
-## Ce qu'on y trouve
-
-| | |
-|---|---|
-| **Journal** | Ce qui s'est allumé dans la journée, et ce qui tourne en ce moment |
-| **Graphique du jour** | Une couleur par appareil, plus le fond toujours allumé |
-| **Catégories** | « Électroménager » regroupe four, plaques, lave-vaisselle… : leur total reste juste même s'il les confond |
-| **Habitudes** | À quelle heure et quel jour tourne chaque appareil |
-| **Suivi des programmes** | Lave-vaisselle, four, lave-linge suivis du début à la fin, pauses comprises |
-| **Bilan par jour** | La maison découpée ligne par ligne, avec le « non identifié », le frigo et les veilles estimés, et le coût de chaque ligne |
-| **Économies** | Les gestes qui rapportent le plus, en € par an, et ce mois-ci comparé au précédent |
-
-![Les appareils, leur certitude et les catégories](docs/images/appareils.png)
+Nothing is set in stone: an appliance you added can be **renamed**, **deleted**, **merged** with another or **split** in two. A misfiled use can be **moved**, and Empreinte recomputes the past. Any appliance or category can be **removed from the Energy dashboard** in one click, and the last action can be **undone**.
 
 ## Installation
 
-### Avec HACS (recommandé)
+### With HACS (recommended)
 
-1. Dans **HACS**, cherchez **Empreinte**, puis **Télécharger**. (Le bouton **« Ouvrir dans HACS »** en haut de cette page y mène directement.)
-2. **Redémarrez Home Assistant**.
-3. [![Ajouter l'intégration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=empreinte), ou **Paramètres → Appareils et services → Ajouter une intégration → Empreinte**.
-4. Choisissez le capteur de **puissance de la maison** (en W ou en VA). Empreinte le devine souvent tout seul.
+1. In **HACS**, search for **Empreinte**, then **Download**. (The **"Open in HACS"** button above takes you straight there.)
+2. **Restart Home Assistant**.
+3. [![Add integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=empreinte), or **Settings → Devices & services → Add integration → Empreinte**.
+4. Pick the **whole-house power** sensor (W or VA). Empreinte usually guesses it for you.
 
-<sub>Empreinte n'apparaît pas encore dans la recherche de HACS ? Ajoutez-le à la main : ⋮ → **Dépôts personnalisés** → `https://github.com/nodyxstudio/empreinte-nilm-home-assistant`, catégorie **Intégration**.</sub>
+<sub>Empreinte not in the HACS search yet? Add it by hand: ⋮ → **Custom repositories** → `https://github.com/nodyxstudio/empreinte-nilm-home-assistant`, category **Integration**.</sub>
 
-### À la main
+### Manually
 
-Téléchargez `empreinte.zip` dans la [dernière version](https://github.com/nodyxstudio/empreinte-nilm-home-assistant/releases/latest), dézippez-le dans `config/custom_components/empreinte/`, redémarrez, puis suivez l'étape 3.
+Download `empreinte.zip` from the [latest release](https://github.com/nodyxstudio/empreinte-nilm-home-assistant/releases/latest), unzip it into `config/custom_components/empreinte/`, restart, then follow step 3.
 
-**Empreinte** apparaît ensuite dans le menu de gauche. À la première ouverture, un court accueil explique les quatre étapes (le bouton **?** le rouvre). Laissez-le tourner quelques heures : les premières découvertes arrivent avec les premiers allumages. Il relit aussi les 10 derniers jours de l'historique de Home Assistant, donc il a souvent déjà de quoi proposer dès le départ.
+**Empreinte** then appears in the sidebar. It also reads back the last 10 days of Home Assistant history, so it often has discoveries to show right away.
 
-👉 **Pas à pas, avec captures : [le tutoriel](docs/TUTORIEL.md).**
+## Optional settings
 
-## Réglages (facultatifs)
+**Settings → Devices & services → Empreinte → Configure.** Change them any time.
 
-**Paramètres → Appareils et services → Empreinte → Configurer → Réglages.** Tout se change à tout moment.
-
-| Réglage | À quoi ça sert |
+| Setting | What it does |
 |---|---|
-| **Langue du panneau** | Français par défaut ; anglais et italien traduisent la navigation, les titres et les dates. Les autres textes et noms d'entités peuvent rester en français. La langue du formulaire suit Home Assistant. |
-| **Prises qui mesurent déjà un appareil** | Leur puissance est retirée avant l'analyse : le PC ou la télé ne sont jamais pris pour autre chose. |
-| **Clim / pompe à chaleur** | Son compresseur fait monter et descendre la courbe : Empreinte ignore ces petits paliers au lieu d'inventer des appareils. |
-| **Son compteur d'énergie** | Elle a alors sa propre ligne dans le bilan, lissée heure par heure. |
-| **Consommation du frigo** | En kWh par an, sur son étiquette énergie. Trop discret pour être vu, il est estimé et retiré du « non identifié ». |
-| **Autres compteurs estimés** | Par exemple des compteurs [Powercalc](https://github.com/bramstroker/homeassistant-powercalc) (lampes, box, alarme), retirés du « non identifié ». |
+| **Panel language** | French by default; English and Italian translate navigation, headings and dates. Other text and entity names may still be in French. The settings form follows the Home Assistant language. |
+| **Smart plugs that already measure a device** | Their power is subtracted before the analysis, so the PC or TV is never mistaken for something else. |
+| **Air conditioner / heat pump** | Its compressor makes the curve go up and down: Empreinte ignores these small steps instead of inventing appliances. |
+| **Its energy meter** | It then gets its own smoothed line in the daily balance. |
+| **Fridge consumption** | kWh per year from its energy label. Too small to be seen, it is estimated and taken out of "unidentified". |
+| **Other estimated meters** | For example [Powercalc](https://github.com/bramstroker/homeassistant-powercalc) meters (lights, router, alarm), taken out of "unidentified". |
 
-### Une prise pour deux appareils
+### One plug, two appliances
 
-Le lave-linge et le sèche-linge sur la même prise connectée, jamais allumés en même temps ? **Configurer → Prises partagées** : choisissez la prise et écrivez « Lave-linge, Sèche-linge ». Empreinte lit la courbe de la prise, découpe chaque programme et reconnaît **lequel des deux** a tourné : le lave-linge tourne d'abord sans chauffer, chauffe l'eau puis alterne moteur et pauses ; le sèche-linge chauffe dès le début presque tout le temps (ou tire environ 600 W pour un modèle à pompe à chaleur) et son tambour ne s'arrête pas. Il le dit **dès le démarrage** (une première idée, puis sûr dès que ça chauffe), avec le prix depuis le début du programme. Chacun reçoit ses capteurs (en marche, puissance, énergie mesurée) et sa ligne dans le tableau Énergie, et chaque programme apparaît avec son prix. Dans **Appareils**, un clic sur le bon nom corrige un programme, et Empreinte apprend. Ça marche avec n'importe quels appareils : pour ceux qu'il ne connaît pas, confirmez un programme de chacun.
+Washing machine and dryer on the same smart plug, never on together? **Configure → Shared plugs**: pick the plug and type "Washing machine, Dryer". Empreinte reads the plug's own curve, cuts each programme and recognises **which one** ran (the washer first turns without heating, heats the water, then alternates motor and pauses; the dryer heats almost all the time from the start, or draws about 600 W for a heat-pump model, and its drum never stops). It tells you **as soon as it starts** (a first guess, then sure once heating begins), with the cost so far. Each gets its own sensors (running, power, measured energy) and its line in the Energy dashboard, and every programme is listed with its price. In **Appliances**, one click on the right name corrects a programme and Empreinte learns. Works with any appliances: for ones it does not know, confirm one programme of each.
 
-Un appareil désormais branché sur une prise mesurée (le micro-ondes, par exemple) ? Sur sa fiche dans **Appareils**, **Mesuré par une prise** : Empreinte ne le cherche plus sur la courbe et ne le propose plus.
+An appliance now plugged into a measured plug (the microwave, for example)? On its page in **Appliances**, **Mesuré par une prise** ("measured by a plug"): Empreinte stops looking for it on the curve and no longer suggests it.
 
-## Ce qu'il vous faut
+## Requirements
 
-- **Home Assistant** 2024.11 ou plus récent.
-- **Un capteur de la puissance de toute la maison**, mis à jour toutes les quelques secondes. Avec un Linky : un module [ZLinky](https://lixee.fr) (Zigbee), un module TIC Wi-Fi, ou tout autre lecteur de téléinformation. Hors France : Shelly EM / 3EM, pince ampèremétrique, compteur Zigbee ou Modbus.
-- Pour le bilan et les coûts : le **tableau Énergie** de Home Assistant réglé avec la consommation du réseau et le prix du kWh.
+- **Home Assistant** 2024.11 or newer.
+- **A whole-house power sensor** updated every few seconds.
+- For the balance and costs: the Home Assistant **Energy dashboard** set up with grid consumption and the kWh price.
 
-## Vos données restent chez vous
+## Your data stays at home
 
-- Tout est calculé **sur votre machine**, dans Home Assistant.
-- Empreinte **n'envoie rien sur internet** : pas de compte, pas de serveur, pas de statistiques d'utilisation.
-- Les données tiennent dans un seul fichier (`config/empreinte/empreinte.db`), inclus dans les sauvegardes de Home Assistant.
-- Supprimer l'intégration efface **tout ce qu'elle a ajouté** : ses capteurs, ses lignes du tableau Énergie, leurs statistiques et sa base de données. Le reste de votre Home Assistant n'est pas touché.
+Everything is computed on your machine. Empreinte sends nothing to the internet: no account, no server, no telemetry. Its data lives in one file (`config/empreinte/empreinte.db`), included in Home Assistant backups.
 
-## Bon à savoir
+## Uninstall
 
-- Empreinte détecte surtout les **démarrages de plus de 350 W**. Après un pic bref, un palier stable de 60 à 180 W peut aussi être conservé ; les petits appareils sans pic restent dans le fond. Une pause de plus de 150 s termine ce type d'événement et une reprise sans nouveau pic ne peut pas être détectée.
-- Le palier après un pic reste une **hypothèse**, pas une preuve : un autre petit appareil peut être allumé au même moment. Les événements déjà enregistrés ne sont pas recalculés automatiquement. Si vous nommez un groupe « Frigo », désactivez l'estimation séparée du frigo pour éviter de compter deux fois la même consommation.
-- Les paliers faibles peuvent être nommés en direct, mais le nom est appliqué à la fin de l'événement ; leur suivi dédié et leurs capteurs en marche ne sont pas garantis en direct.
-- Un appareil allumé **moins de 30 secondes** passe souvent inaperçu : le compteur ne donne pas assez de mesures.
-- Il faut **quelques utilisations** de chaque appareil avant qu'il soit vraiment sûr de lui.
-- Le cas le plus dur : deux appareils de puissance proche en même temps (four et plaques). C'est pour ça que les catégories existent.
-- Le capteur du Linky est souvent en **VA** (puissance apparente) : les kWh peuvent être un peu au-dessus des vrais.
+1. **Settings → Devices & services → Empreinte → ⋮ → Delete.** Everything Empreinte added is removed: sensors, Energy dashboard lines, their statistics and its data. The rest of your Home Assistant is untouched.
+2. In HACS, **Empreinte → ⋮ → Remove** (or delete `config/custom_components/empreinte` if installed manually), then restart.
 
-Questions fréquentes : **[FAQ](docs/FAQ.md)** · Fonctionnement détaillé : **[notes techniques](docs/TECHNIQUE.md)** · Exemple de tableau de bord : **[docs/exemples](docs/exemples/tableau_energie.yaml)**
+## Good to know
 
-## Désinstaller
+- Empreinte primarily detects **starts above 350 W**. A stable 60–180 W plateau immediately after a short spike may also be retained; small appliances without a spike stay in the background. A pause longer than 150 s ends this type of event, and a restart without another spike cannot be detected.
+- A plateau after a spike is an **inference**, not proof: a different small appliance might have started at the same time. Existing recorded events are not automatically reanalysed. If you name a group "Fridge", disable the separate fridge estimate to avoid counting the same consumption twice.
+- Low-power plateaus can be named live, but the name is applied when the event ends; dedicated tracking and live running sensors are not guaranteed for them.
+- An appliance on for **less than 30 seconds** is often missed: the meter does not give enough readings.
+- It needs **a few uses** of each appliance before being really sure.
+- The hardest case: two appliances of similar power at the same time (oven and hob). That is what categories are for.
 
-1. **Paramètres → Appareils et services → Empreinte → ⋮ → Supprimer.** Tout ce qu'Empreinte avait ajouté disparaît : capteurs, lignes du tableau Énergie, statistiques et données.
-2. Dans HACS, **Empreinte → ⋮ → Supprimer** (ou supprimez le dossier `config/custom_components/empreinte` si vous l'aviez installé à la main), puis redémarrez.
+More: [FAQ (French)](docs/FAQ.md) · [Technical notes (French)](docs/TECHNIQUE.md) · [Contributing](CONTRIBUTING.md)
 
-## Contribuer
+Questions or feedback? Write to **[nodyxstudio@gmail.com](mailto:nodyxstudio@gmail.com)**.
 
-Un appareil mal reconnu, un compteur qui ne marche pas, une idée ? Ouvrez une [issue](https://github.com/nodyxstudio/empreinte-nilm-home-assistant/issues) ou une [discussion](https://github.com/nodyxstudio/empreinte-nilm-home-assistant/discussions). Pour modifier le code : [CONTRIBUTING.md](CONTRIBUTING.md).
+If Empreinte helps you, a ⭐ helps other homes find it.
 
-Une question, un retour ? Écrivez-moi : **[nodyxstudio@gmail.com](mailto:nodyxstudio@gmail.com)**.
-
-Si Empreinte vous aide à y voir plus clair, une ⭐ sur le dépôt aide d'autres foyers à le trouver.
-
-<sub>Mots-clés : Home Assistant, Linky, ZLinky, Lixee, téléinformation, NILM, désagrégation de la consommation, détection d'appareils électriques, suivi de consommation par appareil, tableau Énergie, économies d'énergie, domotique, HACS.</sub>
+<sub>Keywords: Home Assistant, NILM, non-intrusive load monitoring, energy disaggregation, appliance detection, per-device energy monitoring, Energy dashboard, Linky, Shelly EM, HACS custom integration.</sub>

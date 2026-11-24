@@ -113,13 +113,15 @@ async def ws_day(hass, connection, msg):
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_action(hass, connection, msg):
+    from .text import display_text
+
     coord = _coord(hass)
     try:
         await coord.async_action(msg)
     except KeyError as err:
-        connection.send_error(msg["id"], "not_found", f"Introuvable : {err.args[0] if err.args else err}")
+        connection.send_error(msg["id"], "not_found", display_text(coord, "not_found").format(item=err.args[0] if err.args else err))
         return
     except ValueError:
-        connection.send_error(msg["id"], "too_soon", "Ajouté il y a moins de 10 minutes : Home Assistant ne l'a pas encore enregistré. Réessaie dans quelques minutes.")
+        connection.send_error(msg["id"], "too_soon", display_text(coord, "too_soon"))
         return
     connection.send_result(msg["id"], await coord.async_state())
