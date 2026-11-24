@@ -1,7 +1,7 @@
 // Interface d'Empreinte : lit les données de l'intégration par la WebSocket de HA.
 "use strict";
 const { findHabits, habitHints, periodOf, HABIT } = await import(new URL("habits.js" + new URL(import.meta.url).search, import.meta.url).href);
-const { locale, translate } = await import(new URL("i18n.js" + new URL(import.meta.url).search, import.meta.url).href);
+const { locale, translate, relativeTime } = await import(new URL("i18n.js" + new URL(import.meta.url).search, import.meta.url).href);
 
 // ---------- Outils
 const $ = (s, r = document) => r.querySelector(s);
@@ -27,6 +27,7 @@ function setLanguage(lang) {
   const notice = $("#language-notice");
   notice.textContent = tr("partial");
   notice.hidden = !notice.textContent;
+  applyTheme();
 }
 const PRIX = 0.22033;   // €/kWh, celui saisi dans HA
 const STEP = 15;        // s, pas de la courbe envoyée par l'intégration
@@ -38,7 +39,7 @@ const fmtDur = s => { s = Math.round(s); if (s < 60) return s + " s"; if (s < 36
 const pad = n => String(n).padStart(2, "0");
 const fmtHM = ms => { const d = new Date(ms); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
 const slug = s => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "appareil";
-const ago = ms => { const s = (Date.now() - ms) / 1000; if (s < 90) return "à l'instant"; if (s < 3600) return `il y a ${Math.round(s / 60)} min`; if (s < 86400) return `il y a ${Math.round(s / 3600)} h`; return `il y a ${Math.round(s / 86400)} j`; };
+const ago = ms => relativeTime(language, ms);
 
 // ---------- État
 let hass = null;
@@ -146,7 +147,7 @@ const KIND_NOTE = {
 // ---------- Groupes
 const G = id => S.groups.find(g => g.id === id);
 const col = g => g ? `var(--s${g.slot})` : "var(--unk)";
-const gname = g => g ? (g.name || "Groupe " + g.letter) : "Pas reconnu";
+const gname = g => g ? (g.name || "Groupe " + g.letter) : tr("unknown");
 const gicon = g => g ? (g.name ? iconFor(g.name) : "help") : "help";
 const hypLabel = g => g && !g.name && g.hyp ? S.kinds[g.hyp] : null;
 const members = gid => EVENTS.filter(e => (e.gid || null) === gid);
@@ -216,7 +217,7 @@ function dayData(d) {
   dayCache.set(key, res);
   return res;
 }
-const layerName = k => k === "base" ? "Toujours allumé" : k === "meas" ? "Prises mesurées (PC…)" : k === "unk" ? "Pas reconnu" : k.startsWith("cat:") ? ((S.status.categories || []).find(c => "cat:" + c.id === k) || {}).name || "Catégorie" : gname(G(k));
+const layerName = k => k === "base" ? tr("alwaysOn") : k === "meas" ? tr("measuredPlugs") : k === "unk" ? tr("unknown") : k.startsWith("cat:") ? ((S.status.categories || []).find(c => "cat:" + c.id === k) || {}).name || tr("category") : gname(G(k));
 const layerCol = k => k === "base" ? "var(--base)" : k === "meas" ? "var(--meas)" : k === "unk" ? "var(--unk)" : k.startsWith("cat:") ? catCol(k.slice(4)) : col(G(k));
 function niceMax(v) { const steps = [500, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 8000]; return steps.find(s => s >= v * 1.06) || Math.ceil(v / 1000) * 1000; }
 function yTicks(max) { const st = max <= 1500 ? 500 : max <= 3000 ? 1000 : 2000; const out = []; for (let v = 0; v <= max + 1; v += st) out.push(v); return out; }
@@ -249,8 +250,8 @@ function drawDay(el) {
     svg += `<text x="${xx}" y="${H - 6}" text-anchor="middle">${lbl}</text>`;
   }
   svg += `</g>`;
-  if (S.day === NDAYS - 1 && dd.limit < I1) { const xa = x(Math.max(dd.limit, I0)); svg += `<rect x="${xa}" y="${m.t}" width="${Math.max(0, W - m.r - xa)}" height="${ph}" style="fill:var(--wash)"/><text x="${(xa + W - m.r) / 2}" y="${m.t + 16}" text-anchor="middle" style="font-size:11px;fill:var(--muted)">à venir</text>`; }
-  if (dd.empty) svg += `<text x="${m.l + pw / 2}" y="${m.t + ph / 2}" text-anchor="middle" style="font-size:13px;fill:var(--muted)">Pas de données ce jour-là</text>`;
+  if (S.day === NDAYS - 1 && dd.limit < I1) { const xa = x(Math.max(dd.limit, I0)); svg += `<rect x="${xa}" y="${m.t}" width="${Math.max(0, W - m.r - xa)}" height="${ph}" style="fill:var(--wash)"/><text x="${(xa + W - m.r) / 2}" y="${m.t + 16}" text-anchor="middle" style="font-size:11px;fill:var(--muted)">${tr("upcoming")}</text>`; }
+  if (dd.empty) svg += `<text x="${m.l + pw / 2}" y="${m.t + ph / 2}" text-anchor="middle" style="font-size:13px;fill:var(--muted)">${tr("noData")}</text>`;
   const cum = cols.map(() => 0);
   for (const k of dd.order) {
     const top = cols.map((c, j) => cum[j] + c.vals[k]);
@@ -281,10 +282,10 @@ function drawDay(el) {
       }
       html += `</div></div>`;
     }
-    lanes.innerHTML = html || `<div class="muted" style="font-size:12.5px;padding-left:${m.l}px">Aucun gros appareil allumé sur cette période.</div>`;
+    lanes.innerHTML = html || `<div class="muted" style="font-size:12.5px;padding-left:${m.l}px">${tr("noAppliance")}</div>`;
     $$(".bar", lanes).forEach(b => {
       const e = EVENTS.find(x => x.id === b.dataset.e);
-      b.addEventListener("pointerenter", ev => showTip(ev, `<div class="t">${esc(gname(G(e.gid)))}</div><div class="r"><span>Début</span><b>${fmtHM(e.start)}</b></div><div class="r"><span>Puissance</span><b>${fmtW(e.p)}</b></div><div class="r"><span>Durée</span><b>${fmtDur(e.dur)}</b></div><div class="r"><span>Énergie</span><b>${fmtKwh(e.wh / 1000)}</b></div>`));
+      b.addEventListener("pointerenter", ev => showTip(ev, `<div class="t">${esc(gname(G(e.gid)))}</div><div class="r"><span>${tr("start")}</span><b>${fmtHM(e.start)}</b></div><div class="r"><span>${tr("power")}</span><b>${fmtW(e.p)}</b></div><div class="r"><span>${tr("duration")}</span><b>${fmtDur(e.dur)}</b></div><div class="r"><span>${tr("energy")}</span><b>${fmtKwh(e.wh / 1000)}</b></div>`));
       b.addEventListener("pointermove", moveTip);
       b.addEventListener("pointerleave", hideTip);
       b.addEventListener("click", () => go(`#/groupe/${e.gid || "aucun"}?e=${e.id}`));
@@ -338,7 +339,7 @@ function drawOverlay(el, gid, mini) {
   const m = mini ? { l: 2, r: 2, t: 4, b: 4 } : { l: 46, r: 10, t: 10, b: 24 };
   const pw = W - m.l - m.r, ph = H - m.t - m.b;
   if (pw < 40) return;
-  if (!evs.length) { el.innerHTML = `<div class="empty" style="padding:${mini ? 20 : 40}px">Aucune utilisation</div>`; return; }
+  if (!evs.length) { el.innerHTML = `<div class="empty" style="padding:${mini ? 20 : 40}px">${tr("noUses")}</div>`; return; }
   const dmax = Math.max(120, Math.min(Math.max(...evs.map(e => e.dur)), quant(evs.map(e => e.dur), 0.85) * 1.35));
   const pmax = niceMax(Math.max(...evs.map(e => Math.max(...e.prof))));
   const x = s => m.l + s / dmax * pw, y = v => m.t + ph - v / pmax * ph;
@@ -348,7 +349,7 @@ function drawOverlay(el, gid, mini) {
     svg += `<g class="ax">`;
     for (const v of yTicks(pmax)) svg += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" class="${v === 0 ? "base" : ""}"/><text x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${fmtTick(v)}</text>`;
     const maxT = Math.max(3, Math.floor(pw / 70)), tstep = [60, 120, 300, 600, 900, 1800, 3600, 7200].find(s => dmax / s <= maxT) || 7200;
-    for (let s = 0; s <= dmax; s += tstep) svg += `<text x="${x(s)}" y="${H - 6}" text-anchor="${s === 0 ? "start" : "middle"}">${s === 0 ? "début" : "+" + fmtDur(s)}</text>`;
+    for (let s = 0; s <= dmax; s += tstep) svg += `<text x="${x(s)}" y="${H - 6}" text-anchor="${s === 0 ? "start" : "middle"}">${s === 0 ? tr("start") : "+" + fmtDur(s)}</text>`;
     svg += `</g>`;
   }
   for (const e of evs) {
@@ -358,7 +359,7 @@ function drawOverlay(el, gid, mini) {
   if (gid && !mini) {
     const st = gstats(gid), good = evs.filter(e => !isAty(e)), med = [];
     for (let s = 0; s < st.D && s <= dmax; s += STEP) { const vs = good.filter(e => s / e.st < e.prof.length).map(e => e.prof[Math.floor(s / e.st)]); if (vs.length) med.push(`${x(s).toFixed(1)},${y(median(vs)).toFixed(1)}`); }
-    if (med.length) svg += `<path d="M${med.join("L")}" style="fill:none;stroke:var(--ink);stroke-width:2.25;stroke-linejoin:round"/><text x="${x(0) + 6}" y="${m.t + 12}" style="font-size:11.5px;fill:var(--ink-2)">— courbe moyenne</text>`;
+    if (med.length) svg += `<path d="M${med.join("L")}" style="fill:none;stroke:var(--ink);stroke-width:2.25;stroke-linejoin:round"/><text x="${x(0) + 6}" y="${m.t + 12}" style="font-size:11.5px;fill:var(--ink-2)">— ${tr("averageCurve")}</text>`;
   }
   el.innerHTML = svg + `</svg>`;
 }
@@ -386,7 +387,7 @@ async function act(msg, okMsg) {
     toast(okMsg, msg.action !== "undo" && !msg.action.startsWith("energy_"));   // le tableau Énergie se corrige avec « Remettre »
     await render();
   } catch (err) {
-    toast("Erreur : " + (err.message || err.code || err));
+    toast(tr("error") + " : " + (err.message || err.code || err));
   }
 }
 const moveEvents = (ids, target) => act({ action: "move", ids, target }, `${ids.length > 1 ? ids.length + " utilisations déplacées" : "Utilisation déplacée"}${target === "new" ? " dans un nouveau groupe" : target ? ` vers « ${gname(G(target))} »` : " dans « Pas reconnu »"}`);
@@ -440,7 +441,7 @@ const dissolveGroup = async gid => { const n = gname(G(gid)); await act({ action
 // ---------- Fenêtres, menus, toasts
 let toastT;
 function toast(msg, canUndo) {
-  const t = $("#toast"); t.innerHTML = `<span>${esc(msg)}</span>${canUndo ? `<button id="undo">${icon("undo")} Annuler</button>` : ""}`;
+  const t = $("#toast"); t.innerHTML = `<span>${esc(msg)}</span>${canUndo ? `<button id="undo">${icon("undo")} ${tr("undo")}</button>` : ""}`;
   t.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 6000);
   if (canUndo) $("#undo").onclick = () => { t.classList.remove("on"); act({ action: "undo" }, "Modification annulée"); };
 }
@@ -577,20 +578,20 @@ function renderNav() {
   $("#tabbar").innerHTML = PAGES.map(link).join("");
   const st = S.status, days = st.first_sample ? Math.max(1, Math.round((Date.now() / 1000 - st.first_sample) / 86400)) : 0;
   $("#status").innerHTML = st.error
-    ? `<b><span class="dot-live" style="background:var(--crit)"></span>Problème d'analyse</b><span>${esc(st.error).slice(0, 120)}</span>`
-    : `<b><span class="dot-live"></span>En marche</b><span>Dernière vérification ${st.last_run ? ago(st.last_run * 1000) : "en cours"}</span><span>${days} jour${days > 1 ? "s" : ""} d'historique · ${st.n_events} utilisations</span><span>Vérifie chaque minute</span>`;
-  $("#mstat").textContent = st.error ? "Problème d'analyse" : `En marche · ${days} j d'historique`;
+    ? `<b><span class="dot-live" style="background:var(--crit)"></span>${tr("analysisError")}</b><span>${esc(st.error).slice(0, 120)}</span>`
+    : `<b><span class="dot-live"></span>${tr("running")}</b><span>${tr("lastCheck")} ${st.last_run ? ago(st.last_run * 1000) : tr("checking")}</span><span>${days} ${tr(days === 1 ? "dayUnitOne" : "dayUnitOther")} ${tr("history")} · ${st.n_events} ${tr(st.n_events === 1 ? "usesOne" : "usesOther")}</span><span>${tr("checksEveryMinute")}</span>`;
+  $("#mstat").textContent = st.error ? tr("analysisError") : `${tr("running")} · ${days} ${tr(days === 1 ? "dayUnitOne" : "dayUnitOther")} ${tr("history")}`;
 }
 
 // ---------- Page : Aperçu
 const fmtH = h => Math.floor(h) + ":" + pad(Math.round((h % 1) * 60) % 60);
 function renderRangeSeg() {
   const el = $("#rangeseg"); if (!el) return;
-  const R_ = [["Journée", 0, 24], ["Nuit", 0, 7], ["Matin", 6, 10], ["Midi", 11, 15], ["Soir", 17, 24]];
+  const R_ = [[tr("day"), 0, 24], [tr("night"), 0, 7], [tr("morning"), 6, 10], [tr("noon"), 11, 15], [tr("evening"), 17, 24]];
   const cur = S.range;
   el.innerHTML = R_.map(([l, a, b]) => `<button class="${cur[0] === a && cur[1] === b ? "on" : ""}" data-a="${a}" data-b="${b}">${l}</button>`).join("");
   $$("button", el).forEach(b => b.onclick = () => { S.range = [+b.dataset.a, +b.dataset.b]; renderRangeSeg(); drawDay($("#daychart")); });
-  const z = $("#zoominfo"); if (z) { const custom = !R_.some(([, a, b]) => cur[0] === a && cur[1] === b); z.innerHTML = custom ? `${icon("zoom")} Zoom ${fmtH(cur[0])} – ${fmtH(cur[1])} · double-clic pour revenir` : "Astuce : glisse sur la courbe pour zoomer"; }
+  const z = $("#zoominfo"); if (z) { const custom = !R_.some(([, a, b]) => cur[0] === a && cur[1] === b); z.innerHTML = custom ? `${icon("zoom")} Zoom ${fmtH(cur[0])} – ${fmtH(cur[1])} · ${tr("zoomReset")}` : tr("zoomTip"); }
 }
 // Journal unique : ce qui tourne en ce moment (appareil par appareil) et ce qui s'est allumé ce jour-là.
 // « Durée » : combien de temps dure le programme (lave-vaisselle, lave-linge…). Retenu pour la prochaine fois.
@@ -620,35 +621,35 @@ function journalCard(dd, evs, today) {
   const loose = today ? (st.pending || []).filter(p => !p.at) : [];
   const act_ = (label, attrs, primary) => `<button class="btn sm ${primary ? "primary" : ""}" ${attrs}>${label}</button>`;
   const liveRow = x => {
-    const when = x.end ? `${fmtHM(x.start * 1000)} – ${fmtHM(x.end * 1000)}` : `depuis ${fmtHM(x.start * 1000)}`;
-    const right = x.pending ? `<span class="pill ok">${icon("check")}${esc(x.pending.name)}</span><button class="icon-btn" data-cancel="${x.pending.t}" title="Retirer cette étiquette">${icon("x")}</button>`
-      : (x.hint ? act_(`${icon("check")} ${esc(x.hint)} ?`, `data-quick-live="${x.start},${x.p}" data-name="${esc(x.hint)}"`, true) : "") + act_("C'est…", `data-live="${x.start},${x.p}"`);
-    return `<div class="row"><span class="dot-live" style="${x.end ? "background:var(--muted);box-shadow:none" : ""}"></span><div class="grow"><div class="t1">${x.end ? "Vient de tourner" : "En marche"} · environ ${fmtW(x.p)}</div><div class="t2">${when}${x.n > 1 ? " · s'allume et s'éteint" : ""}${x.end ? " · sera rangé quand tout sera éteint" : ""}</div></div>${right}</div>`;
+    const when = x.end ? `${fmtHM(x.start * 1000)} – ${fmtHM(x.end * 1000)}` : `${tr("since")} ${fmtHM(x.start * 1000)}`;
+    const right = x.pending ? `<span class="pill ok">${icon("check")}${esc(x.pending.name)}</span><button class="icon-btn" data-cancel="${x.pending.t}" title="${esc(tr("removeLabel"))}">${icon("x")}</button>`
+      : (x.hint ? act_(`${icon("check")} ${esc(x.hint)} ?`, `data-quick-live="${x.start},${x.p}" data-name="${esc(x.hint)}"`, true) : "") + act_(tr("identify"), `data-live="${x.start},${x.p}"`);
+    return `<div class="row"><span class="dot-live" style="${x.end ? "background:var(--muted);box-shadow:none" : ""}"></span><div class="grow"><div class="t1">${tr(x.end ? "justRan" : "running")} · ${tr("approximately")} ${fmtW(x.p)}</div><div class="t2">${when}${x.n > 1 ? ` · ${tr("cyclesOnOff")}` : ""}${x.end ? ` · ${tr("filedWhenOff")}` : ""}</div></div>${right}</div>`;
   };
-  const trackRow = tr => {
-    const pause = Math.max(0, Math.round((Date.now() / 1000 - tr.since) / 60));
+  const trackRow = track => {
+    const pause = Math.max(0, Math.round((Date.now() / 1000 - track.since) / 60));
     // « pas de forte consommation » : il peut laver, rincer, sécher ou attendre son thermostat, sans chauffer
-    const state = tr.on ? `chauffe en ce moment · environ ${fmtW(tr.p)}` : `ne chauffe pas depuis ${pause} min (lavage, séchage, thermostat… il peut reprendre)`;
-    const left = tr.planned_end ? Math.round((tr.planned_end - Date.now() / 1000) / 60) : null;
-    const chrono = tr.planned_end ? `<div class="t2">${icon("clock")} fin prévue à <b>${fmtHM(tr.planned_end * 1000)}</b>${left > 0 ? ` · reste ${fmtDur(left * 60)}` : " · il attend que l'appareil s'arrête"}</div>` : "";
-    return `<div class="row"><span class="dot-live" style="${tr.on ? "" : "background:var(--warn);box-shadow:none"}"></span><div class="grow"><div class="t1">${esc(tr.name)} · suivi depuis ${fmtHM(tr.at * 1000)}</div><div class="t2">${state} · allumé ${fmtDur(tr.on_s)} en tout${tr.user ? "" : " · reconnu tout seul"}</div>${chrono}</div><button class="btn sm ghost" data-tdur="${tr.id}" data-min="${tr.minutes || ""}" title="Temps restant du programme">${icon("clock")} Temps restant</button><button class="btn sm" data-tstop="${tr.id}">${icon("check")} C'est fini</button><button class="icon-btn" data-tcancel="${tr.id}" title="Ce n'était pas ça : arrêter le suivi">${icon("x")}</button></div>`;
+    const state = track.on ? `${tr("heatingNow")} · ${tr("approximately")} ${fmtW(track.p)}` : `${tr("notHeatingSince")} ${pause} min ${tr("mayResume")}`;
+    const left = track.planned_end ? Math.round((track.planned_end - Date.now() / 1000) / 60) : null;
+    const chrono = track.planned_end ? `<div class="t2">${icon("clock")} ${tr("expectedEnd")} <b>${fmtHM(track.planned_end * 1000)}</b>${left > 0 ? ` · ${tr("remaining")} ${fmtDur(left * 60)}` : ` · ${tr("waitingForStop")}`}</div>` : "";
+    return `<div class="row"><span class="dot-live" style="${track.on ? "" : "background:var(--warn);box-shadow:none"}"></span><div class="grow"><div class="t1">${esc(track.name)} · ${tr("trackedSince")} ${fmtHM(track.at * 1000)}</div><div class="t2">${state} · ${fmtDur(track.on_s)} ${tr("onInTotal")}${track.user ? "" : ` · ${tr("recognisedAutomatically")}`}</div>${chrono}</div><button class="btn sm ghost" data-tdur="${track.id}" data-min="${track.minutes || ""}" title="${esc(tr("programmeTimeLeft"))}">${icon("clock")} ${tr("timeLeft")}</button><button class="btn sm" data-tstop="${track.id}">${icon("check")} ${tr("finished")}</button><button class="icon-btn" data-tcancel="${track.id}" title="${esc(tr("cancelTracking"))}">${icon("x")}</button></div>`;
   };
   const doneRow = e => {
     const g = G(e.gid), hyp = hypLabel(g);
     // morceau provisoire d'un appareil encore suivi : il sera remplacé à la fin du suivi, rien à faire
     // (le programme vérifie qu'elle tombe bien sur les moments où l'appareil suivi chauffe)
-    if (e.tracked_by) return `<div class="row"><span class="num muted" style="width:42px">${fmtHM(e.start)}</span><span class="dot" style="background:var(--muted)"></span><div class="grow"><div class="t1">${esc(e.tracked_by)} · suivi en cours</div><div class="t2">${fmtW(e.p)} · rangé tout seul quand il sera éteint</div></div></div>`;
-    const right = g && g.name ? `${g.status === "valide" ? `<span class="pill ok">${icon("sensor")}capteur</span>` : ""}${act_("Changer", `data-label="${e.id}"`)}`
-      : ((e.guess && e.guess.length ? e.guess : hyp ? [hyp] : []).map((n, i) => act_(`${icon("check")} ${esc(n)} ?`, `data-quick="${e.id}" data-name="${esc(n)}"`, i === 0)).join("")) + act_("C'est…", `data-label="${e.id}"`);
-    return `<div class="row click" data-go="#/groupe/${e.gid || "aucun"}?e=${e.id}"><span class="num muted" style="width:42px">${fmtHM(e.start)}</span><span class="dot" style="background:${col(g)}"></span><div class="grow"><div class="t1">${g && g.name ? esc(g.name) : "Pas encore reconnu"}</div><div class="t2">${fmtW(e.p)} · ${fmtDur(e.dur)}${e.cut ? " · arrêté par une coupure de courant" : ""}${e.hint ? ` · peut-être : ${esc(e.hint)} <button class="icon-btn" style="width:24px;height:24px;display:inline-grid;vertical-align:middle" data-unhint="${e.id}" title="Retirer ce « peut-être »">${icon("x")}</button>` : ""}</div></div>${right}</div>`;
+    if (e.tracked_by) return `<div class="row"><span class="num muted" style="width:42px">${fmtHM(e.start)}</span><span class="dot" style="background:var(--muted)"></span><div class="grow"><div class="t1">${esc(e.tracked_by)} · ${tr("trackingInProgress")}</div><div class="t2">${fmtW(e.p)} · ${tr("filedAutomatically")}</div></div></div>`;
+    const right = g && g.name ? `${g.status === "valide" ? `<span class="pill ok">${icon("sensor")}${tr("sensor")}</span>` : ""}${act_(tr("change"), `data-label="${e.id}"`)}`
+      : ((e.guess && e.guess.length ? e.guess : hyp ? [hyp] : []).map((n, i) => act_(`${icon("check")} ${esc(n)} ?`, `data-quick="${e.id}" data-name="${esc(n)}"`, i === 0)).join("")) + act_(tr("identify"), `data-label="${e.id}"`);
+    return `<div class="row click" data-go="#/groupe/${e.gid || "aucun"}?e=${e.id}"><span class="num muted" style="width:42px">${fmtHM(e.start)}</span><span class="dot" style="background:${col(g)}"></span><div class="grow"><div class="t1">${g && g.name ? esc(g.name) : tr("notYetRecognised")}</div><div class="t2">${fmtW(e.p)} · ${fmtDur(e.dur)}${e.cut ? ` · ${tr("powerCut")}` : ""}${e.hint ? ` · ${tr("maybe")} : ${esc(e.hint)} <button class="icon-btn" style="width:24px;height:24px;display:inline-grid;vertical-align:middle" data-unhint="${e.id}" title="${esc(tr("removeMaybe"))}">${icon("x")}</button>` : ""}</div></div>${right}</div>`;
   };
-  return `<div class="card" style="margin-top:16px"><div class="card-h"><div><h2>Journal</h2><p>${today ? "Ce qui tourne en ce moment, puis ce qui s'est allumé aujourd'hui. Un clic suffit pour dire ce que c'est." : "Ce qui s'est allumé ce jour-là."}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${today ? `<button class="btn sm ghost" id="b-now">${icon("edit")} Autre chose en ce moment…</button>` : ""}<button class="btn sm ghost" id="b-at">${icon("clock")} ${today ? "Plus tôt aujourd'hui…" : "Nommer à une heure…"}</button></div></div>
+  return `<div class="card" style="margin-top:16px"><div class="card-h"><div><h2>${tr("journal")}</h2><p>${tr(today ? "journalToday" : "journalDay")}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${today ? `<button class="btn sm ghost" id="b-now">${icon("edit")} ${tr("somethingElse")}</button>` : ""}<button class="btn sm ghost" id="b-at">${icon("clock")} ${tr(today ? "earlierToday" : "nameAtTime")}</button></div></div>
     ${tracks.length ? `<div class="list">${tracks.map(trackRow).join("")}</div>` : ""}
     ${parts.length ? `<div class="list">${parts.map(liveRow).join("")}</div>` : ""}
-    ${meas.length ? `<p class="sub" style="font-size:12.5px;margin:6px 0">${meas.map(m => `${esc(m.name)} : ${fmtW(m.power)}`).join(" · ")} : déjà mesuré par sa prise, retiré des calculs.</p>` : ""}
-    ${loose.length ? `<div class="changes" style="margin:6px 0">${loose.map(p => `<div>${icon("spark")}<span><b>${p.maybe ? "peut-être " : ""}${esc(p.name)}</b> (dit à ${fmtHM(p.t * 1000)}) : sera rangé à la fin de l'utilisation.</span><button class="icon-btn" data-cancel="${p.t}" title="Retirer cette étiquette">${icon("x")}</button></div>`).join("")}</div>` : ""}
+    ${meas.length ? `<p class="sub" style="font-size:12.5px;margin:6px 0">${meas.map(m => `${esc(m.name)} : ${fmtW(m.power)}`).join(" · ")} : ${tr("plugMeasured")}.</p>` : ""}
+    ${loose.length ? `<div class="changes" style="margin:6px 0">${loose.map(p => `<div>${icon("spark")}<span><b>${p.maybe ? `${tr("maybe")} ` : ""}${esc(p.name)}</b> (${tr("saidAt")} ${fmtHM(p.t * 1000)}) : ${tr("filedAtEnd")}.</span><button class="icon-btn" data-cancel="${p.t}" title="${esc(tr("removeLabel"))}">${icon("x")}</button></div>`).join("")}</div>` : ""}
     ${parts.length && evs.length ? `<div style="height:1px;background:var(--border);margin:8px 0"></div>` : ""}
-    <div class="list">${evs.length ? evs.map(doneRow).join("") : (parts.length ? "" : `<div class="empty">Rien de gros pour l'instant.</div>`)}</div>
+    <div class="list">${evs.length ? evs.map(doneRow).join("") : (parts.length ? "" : `<div class="empty">${tr("nothingLarge")}</div>`)}</div>
   </div>`;
 }
 function pageApercu() {
@@ -662,26 +663,26 @@ function pageApercu() {
   const todo = evs.filter(e => !e.gid || !G(e.gid) || !G(e.gid).name).length;
   let peak = 0; for (let i = 0; i < dd.limit; i++) { let s = 0; for (const k of dd.order) s += dd.layers.get(k)[i]; peak = Math.max(peak, s); }
   return `
-  <div class="page-h"><div><h1>${tr("overview")}</h1><p class="sub">Ce que consomme la maison, appareil par appareil.</p></div>
+  <div class="page-h"><div><h1>${tr("overview")}</h1><p class="sub">${tr("overviewDescription")}</p></div>
     <div class="daypick"><button class="icon-btn" id="dprev" ${S.day === 0 ? "disabled" : ""}>${icon("left")}</button><span class="lbl">${dayLabel(S.day)}</span><button class="icon-btn" id="dnext" ${today ? "disabled" : ""}>${icon("right")}</button></div></div>
   <div class="grid g-tiles">
-    <div class="card tile"><div class="lbl">${today ? "Consommé depuis minuit" : "Consommé ce jour-là"}</div><div class="val">${nf1.format(dd.tot)}<small>kWh</small></div><div class="foot">${fmtEur(dd.tot)}</div></div>
-    <div class="card tile"><div class="lbl">Part expliquée par tes appareils</div><div class="val">${pct(named)}<small>%</small></div>
-      <div class="meter" title="Appareils nommés ${pct(named)} %, groupes à nommer ${pct(groups)} %, toujours allumé ${pct(base)} %, pas reconnu ${pct(unk)} %"><span style="width:${pct(named)}%;background:var(--ink-2)"></span><span style="width:${pct(groups)}%;background:var(--muted)"></span><span style="width:${pct(base)}%;background:var(--base)"></span><span style="width:${pct(unk)}%;background:var(--unk);opacity:.5"></span></div>
-      <div class="foot">+ ${pct(groups)} % pas encore nommé · toujours allumé ${pct(base)} %</div></div>
-    <div class="card tile"><div class="lbl">Gros appareils allumés</div><div class="val">${evs.length}</div><div class="foot">${todo ? `${todo} pas encore identifiés` : evs.length ? "tous identifiés" : "aucun pour l'instant"}</div></div>
-    <div class="card tile"><div class="lbl">${nowW !== null ? "Puissance en ce moment" : "Pic de la journée"}</div><div class="val">${nf0.format(nowW !== null ? nowW : peak)}<small>W</small></div><div class="foot">${nowW !== null ? `pic du jour : ${fmtW(peak)} · maximum de l'abonnement : 6 kVA` : "maximum de l'abonnement : 6 kVA"}</div></div>
+    <div class="card tile"><div class="lbl">${tr(today ? "consumedToday" : "consumedDay")}</div><div class="val">${nf1.format(dd.tot)}<small>kWh</small></div><div class="foot">${fmtEur(dd.tot)}</div></div>
+    <div class="card tile"><div class="lbl">${tr("explainedShare")}</div><div class="val">${pct(named)}<small>%</small></div>
+      <div class="meter" title="${esc(tr("namedAppliances"))} ${pct(named)} %, ${esc(tr("groupsToName"))} ${pct(groups)} %, ${esc(tr("alwaysOn"))} ${pct(base)} %, ${esc(tr("unknown"))} ${pct(unk)} %"><span style="width:${pct(named)}%;background:var(--ink-2)"></span><span style="width:${pct(groups)}%;background:var(--muted)"></span><span style="width:${pct(base)}%;background:var(--base)"></span><span style="width:${pct(unk)}%;background:var(--unk);opacity:.5"></span></div>
+      <div class="foot">+ ${pct(groups)} % ${tr("notNamed")} · ${tr("alwaysOn")} ${pct(base)} %</div></div>
+    <div class="card tile"><div class="lbl">${tr("bigAppliances")}</div><div class="val">${evs.length}</div><div class="foot">${todo ? `${todo} ${tr("notIdentified")}` : tr(evs.length ? "allIdentified" : "noneYet")}</div></div>
+    <div class="card tile"><div class="lbl">${tr(nowW !== null ? "currentPower" : "dailyPeak")}</div><div class="val">${nf0.format(nowW !== null ? nowW : peak)}<small>W</small></div><div class="foot">${nowW !== null ? `${tr("peakToday")} : ${fmtW(peak)} · ` : ""}${tr("subscriptionMaximum")} : 6 kVA</div></div>
   </div>
   ${journalCard(dd, evs, today)}
   <div class="card" style="margin-top:16px">
-    <div class="card-h"><div><h2>Puissance de la maison</h2><p>Chaque couleur est un groupe d'appareil. En gris clair : ce qui reste toujours allumé (frigo, box internet, veilles…).</p></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn sm ${S.grp ? "primary" : "ghost"}" id="b-grp" title="Les appareils d'une même catégorie (Électroménager…) en une seule couleur">${icon("check")} Par catégorie</button><div class="seg" id="rangeseg"></div></div></div>
+    <div class="card-h"><div><h2>${tr("housePower")}</h2><p>${tr("chartDescription")}</p></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn sm ${S.grp ? "primary" : "ghost"}" id="b-grp" title="${esc(tr("byCategoryHint"))}">${icon("check")} ${tr("byCategory")}</button><div class="seg" id="rangeseg"></div></div></div>
     <div class="legend" style="margin-bottom:10px">${dd.order.map(k => `<span><i class="sw" style="background:${layerCol(k)}"></i>${esc(layerName(k))}</span>`).join("")}</div>
     <div class="chart" id="daychart"></div>
     <div class="lanes" id="lanes"></div>
     <div class="zoom-hint" id="zoominfo" style="margin-top:8px;display:flex;align-items:center;gap:6px"></div>
   </div>
   <div class="grid" style="margin-top:16px">
-    <div class="card"><div class="card-h"><div><h2>Répartition</h2><p>Énergie par groupe sur la journée</p></div></div>
+    <div class="card"><div class="card-h"><div><h2>${tr("distribution")}</h2><p>${tr("energyByGroup")}</p></div></div>
       ${[...dd.order].sort((a, b) => dd.kwh[b] - dd.kwh[a]).map(k => { const mx = Math.max(...Object.values(dd.kwh), 1e-9); return `<div class="hbar"><div class="nm"><span class="sw" style="background:${layerCol(k)}"></span><span>${esc(layerName(k))}</span></div><div class="trk"><div class="fill" style="width:${dd.kwh[k] / mx * 100}%;background:${layerCol(k)}"></div></div><div class="v">${fmtKwh(dd.kwh[k])} · ${fmtEur(dd.kwh[k])}</div></div>`; }).join("")}
     </div>
   </div>`;
@@ -1127,13 +1128,13 @@ async function render() {
   const seq = ++renderSeq;
   const { page, arg, q } = route();
   const v = $("#view");
-  if (S.error) { v.innerHTML = `<div class="card err" style="margin-top:20px"><h2>Impossible de lire les données</h2><p class="sub">${esc(S.error)}</p></div>`; return; }
+  if (S.error) { v.innerHTML = `<div class="card err" style="margin-top:20px"><h2>${tr("cannotRead")}</h2><p class="sub">${esc(S.error)}</p></div>`; return; }
   if (!S.loaded) return;
   renderNav();
   try {
     if (page === "apercu" || page === "") await ensureDay(S.day);
     if (page === "rapport") await Promise.all(reportDays().map(ensureDay));
-  } catch (err) { v.innerHTML = `<div class="card err"><h2>Erreur</h2><p class="sub">${esc(err.message || err)}</p></div>`; return; }
+  } catch (err) { v.innerHTML = `<div class="card err"><h2>${tr("error")}</h2><p class="sub">${esc(err.message || err)}</p></div>`; return; }
   if (seq !== renderSeq) return;
   if (page === "groupe") { v.innerHTML = pageGroupe(arg); mountGroupe(arg, q); }
   else if (page === "decouvertes") { v.innerHTML = pageDecouvertes(); mountOverlays(); }
@@ -1172,7 +1173,7 @@ let theme = "auto";
 function applyTheme() {
   const dark = theme === "auto" ? !!(hass && hass.themes && hass.themes.darkMode) : theme === "dark";
   document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-  const ic = theme === "auto" ? "auto" : theme === "light" ? "sun" : "moon", t = { auto: "Thème : comme Home Assistant", light: "Thème : clair", dark: "Thème : sombre" }[theme];
+  const ic = theme === "auto" ? "auto" : theme === "light" ? "sun" : "moon", t = tr({ auto: "themeAuto", light: "themeLight", dark: "themeDark" }[theme]);
   ["#theme", "#theme2"].forEach(s => { $(s).innerHTML = icon(ic); $(s).title = t; });
 }
 
@@ -1180,14 +1181,14 @@ function applyTheme() {
 function introModal() {
   try { localStorage.setItem("empreinte-intro", "1"); } catch (e) { }
   const step = (n, t, d) => `<div style="display:flex;gap:12px;margin-top:14px"><div class="gicon" style="background:var(--good);flex:none;color:#fff;font-weight:700">${n}</div><div><b>${t}</b><p class="sub" style="font-size:13px">${d}</p></div></div>`;
-  openModal(`<h2>Bienvenue dans Empreinte</h2>
-    <p class="sub">Empreinte reconnaît les appareils de la maison à partir de la seule courbe de consommation. Il ne connaît pas encore les tiens : il apprend avec toi, en quelques jours.</p>
-    ${step(1, "Il repère", "Chaque appareil de plus de 350 W qui s'allume est noté : sa puissance, sa durée, sa forme. Les allumages qui se ressemblent forment des « découvertes ».")}
-    ${step(2, "Tu nommes", "Quand tu allumes un appareil, clique sur <b>« En ce moment, c'est… »</b> dans l'Aperçu. Ou, après coup, sur une utilisation → <b>C'est…</b>. Ton appareil n'est pas dans la liste ? Écris son nom : il est créé.")}
-    ${step(3, "Il reconnaît", "Après 2 ou 3 réponses par appareil, il le reconnaît seul et affiche sa certitude. Une erreur ? « Non, c'est… », Renommer, Supprimer ou Annuler : tout se corrige.")}
-    ${step(4, "Tu valides", "Quand il est assez sûr, <b>Valider</b> crée ses capteurs et l'ajoute au tableau Énergie. Rien n'y est ajouté sans ton clic.")}
-    <p class="sub" style="font-size:12.5px;margin-top:16px">Tout reste dans ton Home Assistant. Pour revoir ce message : le bouton ${icon("help")}.</p>
-    <div class="acts"><button class="btn primary" data-close>C'est parti</button></div>`);
+  openModal(`<h2>${tr("introTitle")}</h2>
+    <p class="sub">${tr("introDescription")}</p>
+    ${step(1, tr("introDetect"), tr("introDetectText"))}
+    ${step(2, tr("introName"), tr("introNameText"))}
+    ${step(3, tr("introRecognise"), tr("introRecogniseText"))}
+    ${step(4, tr("introValidate"), tr("introValidateText"))}
+    <p class="sub" style="font-size:12.5px;margin-top:16px">${tr("introPrivacy")}</p>
+    <div class="acts"><button class="btn primary" data-close>${tr("getStarted")}</button></div>`);
 }
 
 // ---------- Démarrage
