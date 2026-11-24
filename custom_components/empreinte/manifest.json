@@ -6,7 +6,7 @@
     "recorder"
   ],
   "codeowners": [
-    "@nodyxstudio"
+    "@jacopocarlini"
   ],
   "config_flow": true,
   "dependencies": [
@@ -15,10 +15,10 @@
     "panel_custom",
     "websocket_api"
   ],
-  "documentation": "https://github.com/nodyxstudio/empreinte-nilm-home-assistant",
+  "documentation": "https://github.com/jacopocarlini/empreinte-nilm-home-assistant",
   "integration_type": "service",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/nodyxstudio/empreinte-nilm-home-assistant/issues",
+  "issue_tracker": "https://github.com/jacopocarlini/empreinte-nilm-home-assistant/issues",
   "requirements": [],
   "single_config_entry": true,
   "version": "1.3.1"
