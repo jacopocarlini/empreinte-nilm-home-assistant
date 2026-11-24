@@ -25,9 +25,6 @@ function setLanguage(lang) {
   $("#brand-caption").textContent = tr("detection");
   ["#help1", "#help2"].forEach(s => { $(s).title = tr("help"); });
   if (!(hass && hass.config && hass.config.location_name)) $("#home").textContent = tr("home");
-  const notice = $("#language-notice");
-  notice.textContent = tr("partial");
-  notice.hidden = !notice.textContent;
   applyTheme();
 }
 const PRIX = 0.22033;   // €/kWh, celui saisi dans HA
@@ -207,7 +204,7 @@ function dayData(d) {
   dayCache.set(key, res);
   return res;
 }
-const layerName = k => k === "base" ? tr("alwaysOn") : k === "meas" ? tr("measuredPlugs") : k === "unk" ? tr("unknown") : k.startsWith("cat:") ? ((S.status.categories || []).find(c => "cat:" + c.id === k) || {}).name || tr("category") : gname(G(k));
+const layerName = k => k === "base" ? tr("alwaysOn") : k === "meas" ? tr("measuredPlugs") : k === "unk" ? tr("unknown") : k.startsWith("cat:") ? categoryName((S.status.categories || []).find(c => "cat:" + c.id === k)) || tr("category") : gname(G(k));
 const layerCol = k => k === "base" ? "var(--base)" : k === "meas" ? "var(--meas)" : k === "unk" ? "var(--unk)" : k.startsWith("cat:") ? catCol(k.slice(4)) : col(G(k));
 function niceMax(v) { const steps = [500, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 8000]; return steps.find(s => s >= v * 1.06) || Math.ceil(v / 1000) * 1000; }
 function yTicks(max) { const st = max <= 1500 ? 500 : max <= 3000 ? 1000 : 2000; const out = []; for (let v = 0; v <= max + 1; v += st) out.push(v); return out; }
@@ -430,6 +427,15 @@ async function confirmGroup(gid, name) {
 }
 const validateGroup = gid => confirmGroup(gid);
 const dissolveGroup = async gid => { const n = gname(G(gid)); await act({ action: "delete", gid }, tr("groupDeleted", { name: n })); go("#/decouvertes"); };
+const deleteApplianceModal = gid => {
+  const g = G(gid);
+  if (!g) return;
+  openModal(`<h2>${esc(tr("deleteAppliance"))}</h2>
+    <p class="sub">${esc(tr("deleteApplianceDescription", { name: gname(g) }))}</p>
+    <div class="acts"><button class="btn ghost" data-close>${tr("cancel")}</button><button class="btn sm ghost" id="delete-appliance">${icon("trash")} ${tr("delete")}</button></div>`, (b, close) => {
+      $("#delete-appliance", b).onclick = () => { close(); dissolveGroup(gid); };
+  });
+};
 
 // ---------- Fenêtres, menus, toasts
 let toastT;
@@ -493,7 +499,7 @@ function atModal(ds) {
 }
 function nameModal(title, value, done) {
   openModal(`<h2>${esc(title)}</h2>
-    <input class="field" id="nm" maxlength="40" placeholder="Ex. : Électroménager, Cuisine…" value="${esc(value || "")}">
+    <input class="field" id="nm" maxlength="40" placeholder="${esc(tr("categoryPlaceholder"))}" value="${esc(value || "")}">
     <div class="acts"><button class="btn ghost" data-close>${tr("cancel")}</button><button class="btn primary" id="ok">${tr("save")}</button></div>`, (b, close) => {
     const inp = $("#nm", b); inp.focus(); inp.select();
     const ok = () => { if (!inp.value.trim()) return inp.focus(); close(); done(inp.value.trim()); };
@@ -715,10 +721,11 @@ function pageDecouvertes() {
   const unk = members(null);
   const by = (a, b) => gstats(b.id).n - gstats(a.id).n;
   const empty = !S.groups.length;
+  const threshold = S.status.detection_w ?? 350;
   return `
   <div class="page-h"><div><h1>${tr("discoveries")}</h1><p class="sub">${tr("discoveriesDescription")}</p></div></div>
   <div class="card"><div class="how">
-    <div><span class="n">1</span><span><b>${tr("introDetect")}</b>${tr("discoverDetect")}</span></div>
+    <div><span class="n">1</span><span><b>${tr("introDetect")}</b>${tr("discoverDetect", { threshold })}</span></div>
     <div><span class="n">2</span><span><b>${tr("discoverGroup")}</b>${tr("discoverGroupDescription")}</span></div>
     <div><span class="n">3</span><span><b>${tr("introName")}</b>${tr("discoverName")}</span></div>
     <div><span class="n">4</span><span><b>${tr("introRecognise")}</b>${tr("discoverRecognise")}</span></div>
@@ -853,7 +860,7 @@ function mountGroupe(gid, q) {
 // ---------- Page : Habitudes
 const cap = s => s[0].toUpperCase() + s.slice(1);
 function pageHabitudes() {
-  const hs = findHabits(EVENTS, dayOf, NDAYS, gid => !!(G(gid) && G(gid).name));
+  const hs = findHabits(EVENTS, dayOf, NDAYS, gid => !!(G(gid) && G(gid).name), S.status.detection_w ?? 350);
   // ce que tu as déjà nommé se range en bas : seules les habitudes encore inconnues restent en grand
   const known = hs.filter(hb => G(hb.gid) && G(hb.gid).name), todo = hs.filter(hb => !(G(hb.gid) && G(hb.gid).name));
   const perHour = Array(24).fill(0); EVENTS.forEach(e => { if (dayOf(e.start) >= 0) perHour[new Date(e.start).getHours()]++; });
@@ -938,10 +945,16 @@ function drawScatter(el) {
 
 // ---------- Page : Appareils
 function stateOf(eid) { const s = hass && hass.states[eid]; return s ? `${s.state}${s.attributes.unit_of_measurement ? " " + s.attributes.unit_of_measurement : ""}` : "—"; }
+function categoryName(c) {
+  return c && c.id === "menager" && c.name === "Électroménager" ? tr("defaultCategory") : (c?.name || "");
+}
 function energyBlock(g) {
   const c = Math.round((g.conf || 0) * 100), sure = c >= 85;
-  if (g.energy_dash) return `<div class="banner">${icon("check")}<div class="grow"><b>Dans le tableau Énergie</b> : visible dans ses graphiques.</div><button class="btn sm" data-energy-off="${g.id}">Retirer</button></div>`;
-  return `<div class="banner">${icon(sure ? "check" : "alert")}<div class="grow">Certitude : <b>${c} %</b> (${g.n_uses || 0} utilisation${(g.n_uses || 0) > 1 ? "s" : ""}, dont ${g.n_sure || 0} confirmée${(g.n_sure || 0) > 1 ? "s" : ""} par toi${g.n_fixed ? `, ${g.n_fixed} corrigée${g.n_fixed > 1 ? "s" : ""}` : ""}). ${sure ? "Il est prêt à être affiché dans le tableau Énergie." : (g.n_uses || 0) < 8 ? `Pas encore assez vu : il en faut au moins 8 (encore ${8 - (g.n_uses || 0)}).` : "Pas encore très sûr : confirme quelques utilisations de plus."}</div><button class="btn sm ${sure ? "primary" : ""}" data-energy-on="${g.id}">Ajouter au tableau Énergie</button></div>`;
+  if (g.energy_dash) return `<div class="banner">${icon("check")}<div class="grow"><b>${tr("energyDashboard")}</b> : ${tr("energyVisible")}</div><button class="btn sm" data-energy-off="${g.id}">${tr("remove")}</button></div>`;
+  const fixed = g.n_fixed ? tr("energyFixed", { count: g.n_fixed }) : "";
+  const readiness = sure ? tr("energyReady") : (g.n_uses || 0) < 8
+    ? tr("energyNeedsUses", { count: 8 - (g.n_uses || 0) }) : tr("energyNeedsConfirmation");
+  return `<div class="banner">${icon(sure ? "check" : "alert")}<div class="grow">${esc(tr("energyConfidence", { confidence: c, uses: g.n_uses || 0, confirmed: g.n_sure || 0, fixed }))} ${readiness}</div><button class="btn sm ${sure ? "primary" : ""}" data-energy-on="${g.id}">${tr("addEnergy")}</button></div>`;
 }
 function catCard(c, i) {
   const mem = S.groups.filter(g => g.cat === c.id);
@@ -950,7 +963,7 @@ function catCard(c, i) {
   const btn = c.dash ? `<button class="btn sm" data-cat-off="${c.id}">${tr("removeEnergy")}</button>`
     : `<button class="btn sm ${mem.length ? "primary" : ""}" data-cat-on="${c.id}" ${mem.length ? "" : "disabled"}>${tr("addEnergy")}</button>`;
   return `<div class="card stack" style="gap:12px">
-    <div class="dev-h"><div class="gicon" style="background:${catCol(c.id)}">${icon("sensor")}</div><div class="grow"><div style="font-weight:600;font-size:15px">${esc(c.name)}</div><div class="muted" style="font-size:12.5px">${mem.length ? mem.map(g => esc(gname(g))).join(" · ") : tr("noCategoryAppliances")}</div></div>${c.dash ? `<span class="pill ok">${icon("check")}${tr("energyDashboard")}</span>` : ""}</div>
+    <div class="dev-h"><div class="gicon" style="background:${catCol(c.id)}">${icon("sensor")}</div><div class="grow"><div style="font-weight:600;font-size:15px">${esc(categoryName(c))}</div><div class="muted" style="font-size:12.5px">${mem.length ? mem.map(g => esc(gname(g))).join(" · ") : tr("noCategoryAppliances")}</div></div>${c.dash ? `<span class="pill ok">${icon("check")}${tr("energyDashboard")}</span>` : ""}</div>
     <div class="kv"><div><span>${tr("sevenDays")}</span><b>${fmtKwh(wk)}</b></div><div><span>${tr("cost")}</span><b>${fmtEur(wk)}</b></div><div><span>${tr("currently")}</span><b>${fmtW(c.power || 0)}</b></div>${c.dash ? `<div><span>${tr("sinceAdded")}</span><b>${fmtKwh(c.total || 0)}</b></div>` : ""}</div>
     <p class="sub" style="font-size:12.5px;margin:0">${tr("categoryDescription")} ${tr(c.dash ? "categoryInEnergy" : "categoryNotInEnergy")}</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap">${btn}<button class="btn sm ghost" data-cat-ren="${c.id}">${icon("edit")} ${tr("rename")}</button><button class="btn sm ghost" data-cat-del="${c.id}">${icon("x")} ${tr("delete")}</button></div>
@@ -963,14 +976,15 @@ function energyLogCard() {
   // seulement ce qui est vraiment dans le tableau Énergie (un appareil compté avec sa catégorie n'y est pas une 2e fois)
   const now = Date.now() / 1000, show = log.filter(x => now - x.t < 7 * 86400 && (x.in_dash || x.removed));
   const row = x => {
-    const use = x.start ? `utilisation de ${fmtHM(x.start * 1000)}${x.end ? ` à ${fmtHM(x.end * 1000)}` : ""}` : "utilisation";
-    const btn = x.removed ? `<span class="pill">${x.auto ? "retiré tout seul (corrigé)" : "retiré"}</span><button class="btn sm ghost" data-eredo="${x.id}">Remettre</button>`
-      : now - x.t < 600 ? `<span class="muted" style="font-size:12px">retirable dans ${Math.ceil((600 - (now - x.t)) / 60)} min</span>`
-      : `<button class="btn sm" data-eundo="${x.id}">${icon("x")} Retirer</button>`;
-    return `<div class="row"><span class="num muted" style="width:92px">${fmtWhen(x.t * 1000)}</span><div class="grow"><div class="t1" style="${x.removed ? "text-decoration:line-through;opacity:.6" : ""}">${esc(appliance(x.name))} · ${fmtKwh(x.kwh)}</div><div class="t2">${use}${x.entity ? "" : " · capteur introuvable"}</div></div>${btn}</div>`;
+    const use = x.start ? tr(x.end ? "energyUseRange" : "energyUseStart", { start: fmtHM(x.start * 1000), end: x.end ? fmtHM(x.end * 1000) : "" }) : tr("energyUse");
+    const btn = x.removed ? `<span class="pill">${tr(x.auto ? "energyAutoRemoved" : "energyRemoved")}</span><button class="btn sm ghost" data-eredo="${x.id}">${tr("energyRestore")}</button>`
+      : now - x.t < 600 ? `<span class="muted" style="font-size:12px">${tr("energyRemovableIn", { minutes: Math.ceil((600 - (now - x.t)) / 60) })}</span>`
+      : `<button class="btn sm" data-eundo="${x.id}">${icon("x")} ${tr("remove")}</button>`;
+    const name = x.target?.[0] === "cat" ? categoryName({ id: x.target[1], name: x.name }) : appliance(x.name);
+    return `<div class="row"><span class="num muted" style="width:92px">${fmtWhen(x.t * 1000)}</span><div class="grow"><div class="t1" style="${x.removed ? "text-decoration:line-through;opacity:.6" : ""}">${esc(name)} · ${fmtKwh(x.kwh)}</div><div class="t2">${esc(use)}${x.entity ? "" : ` · ${tr("energySensorMissing")}`}</div></div>${btn}</div>`;
   };
-  return `<div class="card" style="margin-bottom:22px"><div class="card-h"><div><h2>Envoyé au tableau Énergie</h2><p>Chaque utilisation comptée dans le tableau Énergie, au moment où elle l'a été. Quand tu corriges une utilisation (« C'est… », « Changer »), elle est retirée toute seule du tableau Énergie, puis comptée dans le bon appareil s'il y est. « Retirer » sert si tu veux l'enlever sans la corriger.</p></div></div>
-    <div class="list">${show.length ? show.map(row).join("") : `<div class="empty">Rien d'envoyé cette semaine.</div>`}</div></div>`;
+  return `<div class="card" style="margin-bottom:22px"><div class="card-h"><div><h2>${tr("energyLogTitle")}</h2><p>${tr("energyLogDescription")}</p></div></div>
+    <div class="list">${show.length ? show.map(row).join("") : `<div class="empty">${tr("energyLogEmpty")}</div>`}</div></div>`;
 }
 function catsBlock() {
   const cs = (S.status.categories || []);
@@ -1030,12 +1044,17 @@ function pageAppareils() {
       <div><div style="display:grid;grid-template-columns:repeat(${days},1fr);gap:6px;align-items:end;height:60px">${perDay.map((v, i) => `<div title="${dayLabel(d0 + i)} : ${fmtKwh(v)}" style="height:${v ? Math.max(5, v / mx * 100) : 0}%;background:${col(g)};border-radius:4px 4px 0 0;width:100%;max-width:24px;justify-self:center"></div>`).join("")}</div><div style="height:1px;background:var(--axis)"></div>
         <div style="display:grid;grid-template-columns:repeat(${days},1fr);font-size:10.5px;color:var(--muted);text-align:center;margin-top:3px">${perDay.map((v, i) => `<span>${dfDay.format(dayStartMs(d0 + i)).split(" ")[0].replace(".", "")}</span>`).join("")}</div></div>
       ${confBar(st.conf, g)}
-      <label class="muted" style="display:flex;gap:8px;align-items:center;font-size:13px">${tr("category")} <select data-cat-of="${g.id}" style="font:inherit;padding:4px 8px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--ink)"><option value="">${tr("noCategory")}</option>${(S.status.categories || []).map(c => `<option value="${c.id}" ${g.cat === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
+      <label class="muted" style="display:flex;gap:8px;align-items:center;font-size:13px">${tr("category")} <select data-cat-of="${g.id}" style="font:inherit;padding:4px 8px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--ink)"><option value="">${tr("noCategory")}</option>${(S.status.categories || []).map(c => `<option value="${c.id}" ${g.cat === c.id ? "selected" : ""}>${esc(categoryName(c))}</option>`).join("")}</select></label>
       ${((S.status.categories || []).find(c => c.id === g.cat) || {}).dash
-        ? `<div class="banner">${icon("check")}<div class="grow">${esc(tr("categoryCounted", { name: ((S.status.categories || []).find(c => c.id === g.cat) || {}).name }))}</div></div>`
+        ? `<div class="banner">${icon("check")}<div class="grow">${esc(tr("categoryCounted", { name: categoryName((S.status.categories || []).find(c => c.id === g.cat)) }))}</div></div>`
         : g.status === "valide" ? energyBlock(g) : ""}
       ${g.status === "valide" ? `<div class="ent">${(g.entities || []).map(id => `<div><b>${esc(id)}</b><span>${esc(stateOf(id))}</span></div>`).join("") || `<div>${tr("sensorsCreating")}</div>`}</div>`
-        : `<div style="display:flex;gap:8px"><a class="btn sm" href="#/groupe/${g.id}">${tr("viewUses")}</a><button class="btn sm primary" data-val="${g.id}">${icon("check")} ${tr("validate")}</button></div>`}
+        : ""}
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn sm" href="#/groupe/${g.id}">${tr("viewUses")}</a>
+        ${g.status === "valide" ? "" : `<button class="btn sm primary" data-val="${g.id}">${icon("check")} ${tr("validate")}</button>`}
+        <button class="btn sm ghost" data-delete-appliance="${g.id}">${icon("trash")} ${tr("delete")}</button>
+      </div>
     </div>`;
   }).join("")}</div>`;
 }
@@ -1063,42 +1082,42 @@ function pageRapport() {
   const splits = S.groups.filter(g => gstats(g.id).split);
   const baseW = base / hours * 1000;
   return `
-  <div class="page-h"><div><h1>${tr("weeklyReport")}</h1><p class="sub">Du ${dfDay.format(dayStartMs(ds[0]))} au ${dfDay.format(dayStartMs(ds[ds.length - 1])).replace(/\.$/, "")}. Ce sont des hypothèses, pas des certitudes : à toi de confirmer.</p></div><button class="btn" id="b-print">${icon("report")} Imprimer</button></div>
+  <div class="page-h"><div><h1>${tr("weeklyReport")}</h1><p class="sub">${esc(tr("reportPeriod", { from: dfDay.format(dayStartMs(ds[0])), to: dfDay.format(dayStartMs(ds[ds.length - 1])) }))}</p></div><button class="btn" id="b-print">${icon("report")} ${tr("reportPrint")}</button></div>
   <div class="grid g-tiles">
-    <div class="card tile"><div class="lbl">Consommation</div><div class="val">${nf1.format(tot)}<small>kWh</small></div><div class="foot">${fmtEur(tot)} sur ${ds.length} jour${ds.length > 1 ? "s" : ""}</div></div>
-    <div class="card tile"><div class="lbl">Attribuée à un appareil nommé</div><div class="val">${Math.round(named / tot * 100)}<small>%</small></div><div class="foot">${fmtKwh(named)}</div></div>
-    <div class="card tile"><div class="lbl">Toujours allumé</div><div class="val">${nf0.format(baseW)}<small>W</small></div><div class="foot">${fmtKwh(base)} · ${fmtEur(base)} consommés par ce qui ne s'éteint jamais</div></div>
-    <div class="card tile"><div class="lbl">Groupes à confirmer</div><div class="val">${hyps.length}</div><div class="foot">${ready.length ? ready.length + " prêt(s) à devenir capteur" : "aucun prêt à valider"}</div></div>
+    <div class="card tile"><div class="lbl">${tr("reportConsumption")}</div><div class="val">${nf1.format(tot)}<small>kWh</small></div><div class="foot">${esc(tr("reportCostDays", { cost: fmtEur(tot), days: ds.length, unit: tr(ds.length === 1 ? "dayUnitOne" : "dayUnitOther") }))}</div></div>
+    <div class="card tile"><div class="lbl">${tr("reportAttributed")}</div><div class="val">${Math.round(named / tot * 100)}<small>%</small></div><div class="foot">${fmtKwh(named)}</div></div>
+    <div class="card tile"><div class="lbl">${tr("alwaysOn")}</div><div class="val">${nf0.format(baseW)}<small>W</small></div><div class="foot">${esc(tr("reportAlwaysOnFoot", { energy: fmtKwh(base), cost: fmtEur(base) }))}</div></div>
+    <div class="card tile"><div class="lbl">${tr("reportGroupsToConfirm")}</div><div class="val">${hyps.length}</div><div class="foot">${ready.length ? tr("reportReadyCount", { count: ready.length }) : tr("reportNoneReady")}</div></div>
   </div>
   ${(() => {
     // fiabilité mesurée : ce que le programme avait rangé tout seul, et ce que tu en as dit ensuite
     const v = S.status.verdicts || { n: 0, ok: 0, errors: [] };
-    if (!v.n) return `<div class="banner" style="margin-top:16px">${icon("check")}<div class="grow"><b>Fiabilité mesurée</b> : pas encore de mesure. Chaque fois que tu confirmes (« Oui, c'est ça ») ou corriges une utilisation rangée toute seule, le programme note s'il avait raison.</div></div>`;
-    return `<div class="banner" style="margin-top:16px">${icon(v.ok === v.n ? "check" : "alert")}<div class="grow"><b>Fiabilité mesurée sur tes réponses</b> (30 jours) : <b>${v.ok} juste${v.ok > 1 ? "s" : ""} sur ${v.n}</b> rangement${v.n > 1 ? "s" : ""} automatique${v.n > 1 ? "s" : ""} que tu as vérifié${v.n > 1 ? "s" : ""}.${v.errors.length ? ` Erreurs : ${v.errors.map(x => `${fmtWhen(x.start * 1000)}, « ${esc(appliance(x.auto))} » au lieu de « ${esc(x.user ? appliance(x.user) : tr("unknown"))} »`).join(" ; ")}.` : ""}</div></div>`;
+    if (!v.n) return `<div class="banner" style="margin-top:16px">${icon("check")}<div class="grow">${tr("reportReliabilityEmpty")}</div></div>`;
+    return `<div class="banner" style="margin-top:16px">${icon(v.ok === v.n ? "check" : "alert")}<div class="grow">${esc(tr("reportReliability", { correct: v.ok, total: v.n }))}${v.errors.length ? ` ${tr("reportErrors")}: ${v.errors.map(x => esc(tr("reportErrorEntry", { time: fmtWhen(x.start * 1000), predicted: appliance(x.auto), actual: x.user ? appliance(x.user) : tr("unknown") }))).join("; ")}.` : ""}</div></div>`;
   })()}
-  ${hyps.length || ready.length ? `<div class="section-t"><h2>Ce que le programme pense avoir trouvé</h2><span>réponds en un clic</span></div>
-  <div class="groups">${ready.map(g => `<div class="card hcard"><div class="gtitle"><div class="gicon" style="background:${col(g)}">${icon(gicon(g))}</div><div style="flex:1;min-width:0"><div class="q">${g.auto ? `Le programme pense que c'est : ${esc(gname(g).toLowerCase())}` : `${esc(gname(g))} est prêt`}</div><div class="muted" style="font-size:12.5px">${gstats(g.id).n} utilisations qui se ressemblent</div></div></div>${confBar(g.conf)}<div class="acts"><button class="btn sm primary" data-ok="${g.id}">${icon("check")} C'est bon</button>${g.auto ? `<button class="btn sm" data-no="${g.id}">Non, c'est…</button>` : ""}<a class="btn sm" href="#/groupe/${g.id}">Voir</a></div></div>`).join("")}
-  ${hyps.map(g => { const st = gstats(g.id), h = hypLabel(g); return `<div class="card hcard"><div class="gtitle"><div class="gicon" style="background:${col(g)}">${icon("help")}</div><div style="flex:1;min-width:0"><div class="q">Groupe ${g.letter}${h ? ` ressemble à : ${esc(appliance(h).toLowerCase())}` : " : appareil inconnu"}</div><div class="muted" style="font-size:12.5px">${st.n} fois · ${fmtW(st.P)} · ${fmtDur(st.D)}</div></div></div><div class="chart mini" data-ov="${g.id}"></div><ul>${hypReasons(g, st).slice(0, 3).map(r => `<li>${esc(r)}</li>`).join("")}</ul>${confBar(st.conf, g)}<div class="acts">${h ? `<button class="btn sm primary" data-yes="${g.id}">${icon("check")} Oui</button><button class="btn sm" data-no="${g.id}">Non, c'est…</button>` : `<button class="btn sm primary" data-no="${g.id}">${icon("edit")} Nommer</button>`}<a class="btn sm ghost" href="#/groupe/${g.id}">Détails</a></div></div>`; }).join("")}</div>` : ""}
+  ${hyps.length || ready.length ? `<div class="section-t"><h2>${tr("reportFindings")}</h2><span>${tr("reportOneClick")}</span></div>
+  <div class="groups">${ready.map(g => `<div class="card hcard"><div class="gtitle"><div class="gicon" style="background:${col(g)}">${icon(gicon(g))}</div><div style="flex:1;min-width:0"><div class="q">${esc(tr(g.auto ? "reportGuessed" : "reportReady", { name: gname(g) }))}</div><div class="muted" style="font-size:12.5px">${tr("reportSimilarUses", { count: gstats(g.id).n })}</div></div></div>${confBar(g.conf)}<div class="acts"><button class="btn sm primary" data-ok="${g.id}">${icon("check")} ${tr("looksGood")}</button>${g.auto ? `<button class="btn sm" data-no="${g.id}">${tr("noInstead")}</button>` : ""}<a class="btn sm" href="#/groupe/${g.id}">${tr("reportView")}</a></div></div>`).join("")}
+  ${hyps.map(g => { const st = gstats(g.id), h = hypLabel(g); return `<div class="card hcard"><div class="gtitle"><div class="gicon" style="background:${col(g)}">${icon("help")}</div><div style="flex:1;min-width:0"><div class="q">${esc(h ? tr("reportGroupLooksLike", { letter: g.letter, name: appliance(h) }) : tr("reportGroupUnknown", { letter: g.letter }))}</div><div class="muted" style="font-size:12.5px">${st.n} ${tr("times")} · ${fmtW(st.P)} · ${fmtDur(st.D)}</div></div></div><div class="chart mini" data-ov="${g.id}"></div><ul>${hypReasons(g, st).slice(0, 3).map(r => `<li>${esc(r)}</li>`).join("")}</ul>${confBar(st.conf, g)}<div class="acts">${h ? `<button class="btn sm primary" data-yes="${g.id}">${icon("check")} ${tr("yes")}</button><button class="btn sm" data-no="${g.id}">${tr("noInstead")}</button>` : `<button class="btn sm primary" data-no="${g.id}">${icon("edit")} ${tr("nameAction")}</button>`}<a class="btn sm ghost" href="#/groupe/${g.id}">${tr("reportDetails")}</a></div></div>`; }).join("")}</div>` : ""}
   <div class="grid g-2" style="margin-top:16px">
-    <div class="card"><div class="card-h"><div><h2>Énergie par groupe</h2><p>${ds.length} jour${ds.length > 1 ? "s" : ""}, au prix de ${String(PRIX).replace(".", ",")} €/kWh</p></div></div>
+    <div class="card"><div class="card-h"><div><h2>${tr("reportEnergyByGroup")}</h2><p>${esc(tr("reportEnergyPeriod", { days: ds.length, unit: tr(ds.length === 1 ? "dayUnitOne" : "dayUnitOther"), price: new Intl.NumberFormat(locale(language), { maximumFractionDigits: 5 }).format(PRIX) }))}</p></div></div>
       ${keys.map(k => `<div class="hbar"><div class="nm"><span class="sw" style="background:${layerCol(k)}"></span><span>${esc(layerName(k))}</span></div><div class="trk"><div class="fill" style="width:${per[k] / mx * 100}%;background:${layerCol(k)}"></div></div><div class="v">${fmtKwh(per[k])} · ${fmtEur(per[k])}</div></div>`).join("")}
     </div>
-    <div class="card"><div class="card-h"><div><h2>Quand la maison consomme</h2><p>kWh par heure, plus foncé = plus consommé</p></div></div>
+    <div class="card"><div class="card-h"><div><h2>${tr("reportWhenConsuming")}</h2><p>${tr("reportHeatHelp")}</p></div></div>
       <div class="heat" id="heat">${heat.map((row, i) => `<span class="dl">${dfDay.format(dayStartMs(ds[i])).split(" ")[0].replace(".", "")}</span>${row.map((v, h) => `<i data-v="${v === null ? "" : v}" data-l="${dayLabel(ds[i])}, ${h} h" style="background:${qcol(v)}"></i>`).join("")}`).join("")}
       <span></span>${Array.from({ length: 24 }, (_, h) => `<span style="text-align:center;font-size:10px">${h % 6 === 0 ? h : ""}</span>`).join("")}</div>
-      <div style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11.5px;color:var(--muted)">peu ${[1, 2, 3, 4, 5, 6, 7].map(i => `<i style="width:16px;height:10px;border-radius:2px;background:var(--q${i})"></i>`).join("")} beaucoup</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11.5px;color:var(--muted)">${tr("reportLow")} ${[1, 2, 3, 4, 5, 6, 7].map(i => `<i style="width:16px;height:10px;border-radius:2px;background:var(--q${i})"></i>`).join("")} ${tr("reportHigh")}</div>
     </div>
   </div>
   <div class="grid g-2" style="margin-top:16px">
-    <div class="card"><h2>Détail</h2><table class="t" style="margin-top:8px"><thead><tr><th>Groupe</th><th class="r">Utilisations</th><th class="r">kWh</th><th class="r">Coût</th></tr></thead><tbody>
+    <div class="card"><h2>${tr("reportDetails")}</h2><table class="t" style="margin-top:8px"><thead><tr><th>${tr("group")}</th><th class="r">${tr("usesTitle")}</th><th class="r">kWh</th><th class="r">${tr("cost")}</th></tr></thead><tbody>
       ${keys.map(k => `<tr><td><span style="display:inline-flex;align-items:center;gap:7px"><i class="sw" style="background:${layerCol(k)}"></i>${esc(layerName(k))}</span></td><td class="r">${k === "base" ? "—" : days.reduce((a, d) => a + d.evs.filter(e => (e.gid || "unk") === k && e.start >= d.ds).length, 0)}</td><td class="r">${nf2.format(per[k])}</td><td class="r">${fmtEur(per[k])}</td></tr>`).join("")}
-      <tr><td><b>Total</b></td><td></td><td class="r"><b>${nf2.format(tot)}</b></td><td class="r"><b>${fmtEur(tot)}</b></td></tr></tbody></table></div>
-    <div class="card"><h2>Ce qui a changé</h2><div class="changes" style="margin-top:10px">
-      <div>${icon("spark")}<span><b>${newG} nouveau${newG > 1 ? "x" : ""} groupe${newG > 1 ? "s" : ""}</b> repéré${newG > 1 ? "s" : ""} cette semaine.</span></div>
-      ${valid.length ? `<div>${icon("sensor")}<span><b>${valid.map(g => esc(gname(g))).join(", ")}</b> reconnu${valid.length > 1 ? "s" : ""} automatiquement.</span></div>` : ""}
-      ${atyG.map(g => `<div>${icon("alert")}<span><b>${esc(gname(g))}</b> : ${members(g.id).filter(isAty).length} utilisation(s) ne ressemblent pas aux autres. À vérifier.</span></div>`).join("")}
-      ${splits.map(g => { const sp = gstats(g.id).split; return `<div>${icon("split")}<span><b>${esc(gname(g))}</b> semble avoir deux allures (environ ${fmtW(sp.lowP)} et ${fmtW(sp.highP)}).</span></div>`; }).join("")}
-      <div>${icon("zap")}<span>Ce qui reste toujours allumé consomme environ <b>${nf0.format(baseW)} W</b>, soit environ ${fmtEur(baseW / 1000 * 24 * 365)} par an. C'est souvent la première piste d'économie.</span></div>
+      <tr><td><b>${tr("reportTotal")}</b></td><td></td><td class="r"><b>${nf2.format(tot)}</b></td><td class="r"><b>${fmtEur(tot)}</b></td></tr></tbody></table></div>
+    <div class="card"><h2>${tr("reportChanges")}</h2><div class="changes" style="margin-top:10px">
+      <div>${icon("spark")}<span>${esc(tr("reportNewGroups", { count: newG }))}</span></div>
+      ${valid.length ? `<div>${icon("sensor")}<span>${esc(tr("reportRecognised", { names: valid.map(g => gname(g)).join(", ") }))}</span></div>` : ""}
+      ${atyG.map(g => `<div>${icon("alert")}<span>${esc(tr("reportUnusual", { name: gname(g), count: members(g.id).filter(isAty).length }))}</span></div>`).join("")}
+      ${splits.map(g => { const sp = gstats(g.id).split; return `<div>${icon("split")}<span>${esc(tr("reportTwoLevels", { name: gname(g), low: fmtW(sp.lowP), high: fmtW(sp.highP) }))}</span></div>`; }).join("")}
+      <div>${icon("zap")}<span>${esc(tr("reportBaseCost", { power: fmtW(baseW), cost: fmtEur(baseW / 1000 * 24 * 365) }))}</span></div>
     </div></div>
   </div>`;
 }
@@ -1109,7 +1128,7 @@ function mountRapport() {
   $$("[data-yes]").forEach(b => b.onclick = () => confirmGroup(b.dataset.yes, hypLabel(G(b.dataset.yes))));
   $$("[data-ok]").forEach(b => b.onclick = () => confirmGroup(b.dataset.ok));
   $$("[data-no]").forEach(b => b.onclick = () => renameModal(b.dataset.no));
-  $$("#heat i[data-l]").forEach(c => { if (c.dataset.v === "") return; c.onpointerenter = ev => showTip(ev, `<div class="t">${esc(c.dataset.l)}</div><div class="r"><span>Consommé</span><b>${fmtKwh(+c.dataset.v)}</b></div>`); c.onpointermove = moveTip; c.onpointerleave = hideTip; });
+  $$("#heat i[data-l]").forEach(c => { if (c.dataset.v === "") return; c.onpointerenter = ev => showTip(ev, `<div class="t">${esc(c.dataset.l)}</div><div class="r"><span>${tr("reportConsumed")}</span><b>${fmtKwh(+c.dataset.v)}</b></div>`); c.onpointermove = moveTip; c.onpointerleave = hideTip; });
 }
 
 function pageSettings() {
@@ -1178,22 +1197,28 @@ async function render() {
     v.innerHTML = pageAppareils();
     bindShared();
     $$("[data-val]").forEach(b => b.onclick = () => validateModal(b.dataset.val));
-    $$("[data-energy-on]").forEach(b => b.onclick = () => act({ action: "energy_add", gid: b.dataset.energyOn }, `« ${gname(G(b.dataset.energyOn))} » ajouté dans le tableau Énergie`));
-    $$("[data-energy-off]").forEach(b => b.onclick = () => act({ action: "energy_remove", gid: b.dataset.energyOff }, `« ${gname(G(b.dataset.energyOff))} » retiré du tableau Énergie`));
-    const cname = cid => ((S.status.categories || []).find(c => c.id === cid) || {}).name || "";
-    $$("[data-cat-on]").forEach(b => b.onclick = () => act({ action: "cat_dash", cid: b.dataset.catOn, on: true }, `« ${cname(b.dataset.catOn)} » ajouté dans le tableau Énergie`));
-    $$("[data-cat-off]").forEach(b => b.onclick = () => act({ action: "cat_dash", cid: b.dataset.catOff, on: false }, `« ${cname(b.dataset.catOff)} » retiré du tableau Énergie`));
-    $$("[data-cat-of]").forEach(b => b.onchange = () => act({ action: "cat_set", gid: b.dataset.catOf, cid: b.value || null }, b.value ? `« ${gname(G(b.dataset.catOf))} » rangé dans « ${cname(b.value)} »` : `« ${gname(G(b.dataset.catOf))} » sans catégorie`));
-    $$("[data-cat-ren]").forEach(b => b.onclick = () => nameModal("Renommer la catégorie", cname(b.dataset.catRen), n => act({ action: "cat_rename", cid: b.dataset.catRen, name: n }, "Catégorie renommée")));
-    $$("[data-cat-del]").forEach(b => b.onclick = () => act({ action: "cat_delete", cid: b.dataset.catDel }, `« ${cname(b.dataset.catDel)} » supprimée (ses appareils restent nommés)`));
-    $$("[data-eundo]").forEach(b => b.onclick = () => act({ action: "energy_undo", lid: b.dataset.eundo }, "Retiré du tableau Énergie"));
-    $$("[data-eredo]").forEach(b => b.onclick = () => act({ action: "energy_redo", lid: b.dataset.eredo }, "Remis dans le tableau Énergie"));
-    if ($("#b-cat-new")) $("#b-cat-new").onclick = () => nameModal("Nouvelle catégorie", "", n => act({ action: "cat_create", name: n }, `Catégorie « ${n} » créée`));
+    $$("[data-delete-appliance]").forEach(b => b.onclick = () => deleteApplianceModal(b.dataset.deleteAppliance));
+    $$("[data-energy-on]").forEach(b => b.onclick = () => act({ action: "energy_add", gid: b.dataset.energyOn }, tr("namedAddedEnergy", { name: gname(G(b.dataset.energyOn)) })));
+    $$("[data-energy-off]").forEach(b => b.onclick = () => act({ action: "energy_remove", gid: b.dataset.energyOff }, tr("namedRemovedEnergy", { name: gname(G(b.dataset.energyOff)) })));
+    const category = cid => (S.status.categories || []).find(c => c.id === cid);
+    const cname = cid => categoryName(category(cid));
+    $$("[data-cat-on]").forEach(b => b.onclick = () => act({ action: "cat_dash", cid: b.dataset.catOn, on: true }, tr("namedAddedEnergy", { name: cname(b.dataset.catOn) })));
+    $$("[data-cat-off]").forEach(b => b.onclick = () => act({ action: "cat_dash", cid: b.dataset.catOff, on: false }, tr("namedRemovedEnergy", { name: cname(b.dataset.catOff) })));
+    $$("[data-cat-of]").forEach(b => b.onchange = () => act({ action: "cat_set", gid: b.dataset.catOf, cid: b.value || null }, b.value ? tr("categoryAssigned", { name: gname(G(b.dataset.catOf)), category: cname(b.value) }) : tr("categoryUnassigned", { name: gname(G(b.dataset.catOf)) })));
+    $$("[data-cat-ren]").forEach(b => b.onclick = () => nameModal(tr("renameCategory"), cname(b.dataset.catRen), n => act({ action: "cat_rename", cid: b.dataset.catRen, name: n === cname(b.dataset.catRen) ? category(b.dataset.catRen).name : n }, tr("categoryRenamed"))));
+    $$("[data-cat-del]").forEach(b => b.onclick = () => act({ action: "cat_delete", cid: b.dataset.catDel }, tr("categoryDeleted", { name: cname(b.dataset.catDel) })));
+    $$("[data-eundo]").forEach(b => b.onclick = () => act({ action: "energy_undo", lid: b.dataset.eundo }, tr("removedEnergy")));
+    $$("[data-eredo]").forEach(b => b.onclick = () => act({ action: "energy_redo", lid: b.dataset.eredo }, tr("energyRestored")));
+    if ($("#b-cat-new")) $("#b-cat-new").onclick = () => nameModal(tr("createCategory"), "", n => act({ action: "cat_create", name: n }, tr("categoryCreated", { name: n })));
   }
   else if (page === "rapport") { v.innerHTML = pageRapport(); mountRapport(); }
   else if (page === "parametres") { v.innerHTML = pageSettings(); mountSettings(); }
   else { v.innerHTML = pageApercu(); mountApercu(); }
-  $$("[data-go]", v).forEach(el => el.addEventListener("click", e => { if (e.target.closest("button,a,input")) return; go(el.dataset.go); }));
+  $$("[data-go]", v).forEach(el => el.addEventListener("click", e => {
+    if (el.matches("button,a")) { go(el.dataset.go); return; }
+    if (e.target.closest("button,a,input")) return;
+    go(el.dataset.go);
+  }));
 }
 function redrawCharts() {
   if ($("#daychart")) drawDay($("#daychart"));
@@ -1215,10 +1240,11 @@ function applyTheme() {
 // ---------- Accueil : montré une fois, au premier lancement (et à tout moment avec le bouton ?)
 function introModal() {
   try { localStorage.setItem("empreinte-intro", "1"); } catch (e) { }
+  const threshold = S.status.detection_w ?? 350;
   const step = (n, t, d) => `<div style="display:flex;gap:12px;margin-top:14px"><div class="gicon" style="background:var(--good);flex:none;color:#fff;font-weight:700">${n}</div><div><b>${t}</b><p class="sub" style="font-size:13px">${d}</p></div></div>`;
   openModal(`<h2>${tr("introTitle")}</h2>
     <p class="sub">${tr("introDescription")}</p>
-    ${step(1, tr("introDetect"), tr("introDetectText"))}
+    ${step(1, tr("introDetect"), tr("introDetectText", { threshold }))}
     ${step(2, tr("introName"), tr("introNameText"))}
     ${step(3, tr("introRecognise"), tr("introRecogniseText"))}
     ${step(4, tr("introValidate"), tr("introValidateText"))}

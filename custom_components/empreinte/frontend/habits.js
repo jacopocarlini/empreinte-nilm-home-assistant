@@ -17,8 +17,8 @@ export const HABIT = {
 // events : [{id, start (ms), p (W), dur (s), gid}] ; dayOf(ms) -> numéro du jour ; nDays : jours observés ;
 // named(gid) : ce groupe a-t-il un nom ? Deux appareils nommés différemment ne forment jamais une même habitude
 // (micro-ondes et cafetière ont presque la même puissance) ; une utilisation pas encore nommée peut rejoindre l'un ou l'autre.
-export function findHabits(events, dayOf, nDays, named = gid => !!gid) {
-  const cand = events.filter(e => e.p >= 350 && dayOf(e.start) >= 0).map(e => ({ e, h: hourOf(e.start), d: dayOf(e.start) }));
+export function findHabits(events, dayOf, nDays, named = gid => !!gid, threshold = 350) {
+  const cand = events.filter(e => e.p >= threshold && dayOf(e.start) >= 0).map(e => ({ e, h: hourOf(e.start), d: dayOf(e.start) }));
   const used = new Set(), out = [];
   const minDays = Math.max(HABIT.MIN_DAYS, Math.ceil(HABIT.MIN_SHARE * nDays));
   for (;;) {

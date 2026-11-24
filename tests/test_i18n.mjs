@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { runInNewContext } from "node:vm";
 import { applianceName, applianceNames, applianceSelection, locale, messages, relativeTime, translate } from "../custom_components/empreinte/frontend/i18n.js";
 
 assert.equal(applianceName("it", "Lave-linge"), "Lavatrice");
@@ -32,8 +33,6 @@ assert.equal(translate("invalid", "overview"), "Aperçu");
 assert.equal(locale("it"), "it-IT");
 assert.equal(locale("en"), "en-GB");
 assert.equal(locale("invalid"), "fr-FR");
-assert.ok(translate("it", "partial"));
-assert.equal(translate("fr", "partial"), "");
 for (const language of ["en", "it"]) {
   assert.deepEqual(Object.keys(messages[language]).sort(), Object.keys(messages.fr).sort());
   for (const [key, value] of Object.entries(messages[language])) {
@@ -52,6 +51,104 @@ assert.equal(relativeTime("fr", 1000, 1000), "à l'instant");
 assert.equal(translate("it", "trackingLabel", { name: "Lavatrice <test>" }), "« Lavatrice <test> » monitorato fino allo spegnimento");
 assert.equal(translate("en", "expectedAt", { time: "14:30" }), "Expected to finish at 14:30");
 assert.equal(translate("en", "expectedAt"), "Expected to finish at {time}");
+const source = await readFile(new URL("../custom_components/empreinte/frontend/app.js", import.meta.url), "utf8");
+const devicePage = source.slice(source.indexOf("function stateOf("), source.indexOf("// ---------- Page : Rapport"));
+for (const language of ["fr", "en", "it"]) {
+  const now = Date.now() / 1000;
+  const group = { id: "g1", name: "Lave-linge", status: "valide", conf: 0.6, n_uses: 3, n_sure: 1, n_fixed: 1 };
+  const context = {
+    S: { groups: [group], status: { categories: [{ id: "c1", name: "Kitchen <test>", dash: false },
+      { id: "menager", name: "Électroménager", dash: false }],
+      energy_log: [
+        { id: 1, t: now - 60, start: now - 120, end: now - 90, name: "Lave-linge", kwh: 1, in_dash: true },
+        { id: 2, t: now - 700, name: "Lave-linge", kwh: 1, in_dash: true },
+        { id: 3, t: now - 800, name: "Lave-linge", kwh: 1, removed: true, auto: true },
+        { id: 4, t: now - 800, name: "Électroménager", target: ["cat", "menager"], kwh: 1, removed: true },
+      ], shared: [] } },
+    hass: null, NDAYS: 1, Date, Math,
+    tr: (key, values) => translate(language, key, values),
+    esc: value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])),
+    appliance: name => applianceName(language, name),
+    gname: g => applianceName(language, g.name),
+    gstats: () => ({ kwhWeek: 1, m: [], last: null, n: 1, P: 50, conf: 0.6 }),
+    members: () => [], dayOf: () => 0, dayStartMs: () => 0, dayLabel: () => "day",
+    dfDay: { format: () => "day" }, fmtW: v => `${v} W`, fmtKwh: v => `${v} kWh`,
+    fmtEur: v => `${v} €`, fmtWhen: () => "time", fmtHM: () => "12:00",
+    icon: () => "", gicon: () => "", col: () => "red", catCol: () => "red", confBar: () => "",
+  };
+  const page = runInNewContext(`${devicePage}\npageAppareils()`, context);
+  for (const key of ["energyLogTitle", "energyLogDescription", "energySensorMissing", "energyAutoRemoved",
+    "energyRestore", "rename", "delete", "addEnergy"]) {
+    assert.ok(page.includes(translate(language, key)), `${language}: missing ${key} on devices page`);
+  }
+  assert.ok(page.includes(translate(language, "energyRemovableIn", { minutes: 9 })));
+  assert.ok(page.includes(translate(language, "energyNeedsUses", { count: 5 })));
+  assert.ok(page.includes(translate(language, "energyConfidence", { confidence: 60, uses: 3, confirmed: 1,
+    fixed: translate(language, "energyFixed", { count: 1 }) })));
+  assert.ok(page.includes("Kitchen &lt;test&gt;"));
+  assert.ok(page.includes(translate(language, "defaultCategory")));
+  assert.ok(page.includes(applianceName(language, "Lave-linge")));
+  if (language !== "fr") assert.ok(!page.includes("Électroménager"));
+  group.energy_dash = true;
+  const active = runInNewContext(`${devicePage}\npageAppareils()`, context);
+  assert.ok(active.includes(translate(language, "energyVisible")));
+}
+const reportPage = source.slice(source.indexOf("function reportDays()"), source.indexOf("function pageSettings()"));
+for (const language of ["fr", "en", "it"]) {
+  const groups = [
+    { id: "new", status: "nouveau", letter: "A", created: Date.now() / 1000, hyp: "Lave-linge" },
+    { id: "unknown", status: "nouveau", letter: "B", created: 0 },
+    { id: "ready", status: "nomme", name: "Lave-linge", auto: true, conf: 0.9 },
+    { id: "named", status: "nomme", name: "<Custom>", conf: 0.9 },
+    { id: "valid", status: "valide", name: "Four" },
+  ];
+  const item = { gid: "valid", start: 0 };
+  const cell = { dataset: { v: "1", l: "<day>" } };
+  let tip = "";
+  const ctx = {
+    S: { groups, status: { verdicts: { n: 2, ok: 1, errors: [{ start: 1, auto: "Lave-linge", user: "<wrong>" }] } } },
+    NDAYS: 1, STEP: 15, PRIX: 0.22033, Date, Math, Intl, language, locale,
+    tr: (key, values) => translate(language, key, values),
+    esc: value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])),
+    dayData: () => ({ tot: 2, order: ["base", "valid"], kwh: { base: 1, valid: 1 }, hours: 24, limit: 1,
+      layers: new Map([["base", [200]], ["valid", [1000]]]), evs: [item], ds: 0 }),
+    dayStartMs: () => 0, dayLabel: () => "day", dfDay: { format: () => "day" },
+    nf1: { format: x => String(x) }, nf0: { format: x => String(Math.round(x)) }, nf2: { format: x => String(x) },
+    G: id => groups.find(g => g.id === id), members: id => id === "valid" ? [item] : [],
+    isAty: () => true, gstats: id => ({ n: 3, P: 50, D: 60, conf: 0.9,
+      split: id === "valid" ? { lowP: 50, highP: 100 } : null }),
+    gname: g => applianceName(language, g.name || g.letter), appliance: name => applianceName(language, name),
+    hypLabel: g => g.hyp, hypReasons: () => [], confBar: () => "", icon: () => "", col: () => "red",
+    gicon: () => "", layerCol: () => "red", layerName: k => k, clamp: (x, a, b) => Math.max(a, Math.min(b, x)),
+    fmtW: v => `${Math.round(v)} W`, fmtDur: v => `${v} s`, fmtKwh: v => `${v} kWh`,
+    fmtEur: v => `${v} €`, fmtWhen: () => "time",
+    mountOverlays: () => {}, $: () => ({}), $$: selector => selector === "#heat i[data-l]" ? [cell] : [],
+    showTip: (_, html) => { tip = html; }, moveTip: () => {}, hideTip: () => {},
+  };
+  const page = runInNewContext(`${reportPage}\npageRapport()`, ctx);
+  for (const key of ["reportPrint", "reportConsumption", "reportAttributed", "reportGroupsToConfirm",
+    "reportFindings", "reportEnergyByGroup", "reportWhenConsuming", "reportHeatHelp", "reportChanges",
+    "reportDetails", "reportLow", "reportHigh", "reportErrors", "looksGood", "noInstead"]) {
+    assert.ok(page.includes(translate(language, key)), `${language}: missing ${key} on report page`);
+  }
+  assert.ok(page.includes(translate(language, "reportReliability", { correct: 1, total: 2 })));
+  assert.ok(page.includes(translate(language, "reportGroupUnknown", { letter: "B" })));
+  assert.ok(page.includes(translate(language, "reportGroupLooksLike", { letter: "A", name: applianceName(language, "Lave-linge") })));
+  assert.ok(page.includes("&lt;Custom&gt;"));
+  assert.ok(page.includes("&lt;wrong&gt;"));
+  runInNewContext(`${reportPage}\nmountRapport()`, ctx);
+  cell.onpointerenter({});
+  assert.ok(tip.includes(translate(language, "reportConsumed")));
+  assert.ok(tip.includes("&lt;day&gt;"));
+  ctx.S.groups = [];
+  ctx.S.status.verdicts = { n: 0, ok: 0, errors: [] };
+  const empty = runInNewContext(`${reportPage}\npageRapport()`, ctx);
+  assert.ok(empty.includes(translate(language, "reportReliabilityEmpty")));
+  assert.ok(empty.includes(translate(language, "reportNoneReady")));
+}
+assert.ok(!source.includes('tr("partial")'));
+const panel = await readFile(new URL("../custom_components/empreinte/frontend/empreinte-panel.js", import.meta.url), "utf8");
+assert.ok(!panel.includes("language-notice"));
 for (const language of ["fr", "en", "it"]) {
   for (const [seconds, amount, unit] of [[120, -2, "minute"], [7200, -2, "hour"], [172800, -2, "day"]]) {
     assert.equal(

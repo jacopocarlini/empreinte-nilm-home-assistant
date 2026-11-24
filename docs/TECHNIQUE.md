@@ -4,7 +4,7 @@ Pour les curieux et pour ceux qui veulent modifier le programme. Pour l'utiliser
 
 ## L'algorithme, étape par étape
 
-1. **Découpage** (`engine.segment`) : chaque montée de plus de 350 W au-dessus du fond permanent ouvre une utilisation. Le fond est le bas de la courbe sur les 15 dernières minutes calmes ; celui d'une utilisation est le niveau juste avant son saut. Si ce pic retombe en 60 s au plus sur un palier de 60 à 180 W stable pendant 90 s, ce palier peut prolonger l'utilisation avec un seuil d'arrêt relatif. Les pauses jusqu'à 150 s sont conservées. C'est une hypothèse : un autre petit appareil peut produire le même signal.
+1. **Découpage** (`engine.segment`) : chaque montée au-dessus du seuil de détection configuré (350 W par défaut) ouvre une utilisation. Le fond est le bas de la courbe sur les 15 dernières minutes calmes ; celui d'une utilisation est le niveau juste avant son saut. Si ce pic retombe en 60 s au plus sur un palier de 60 à 180 W stable pendant 90 s, ce palier peut prolonger l'utilisation avec un seuil d'arrêt relatif. Les pauses jusqu'à 150 s sont conservées. C'est une hypothèse : un autre petit appareil peut produire le même signal.
 2. **Résumé** (`engine.features`) : puissance du palier de départ, durée, part du temps allumé, nombre de marche/arrêt, forme (stable, paliers, cycles), heure.
 3. **Séparation** (`engine.split_session`) : quand plusieurs appareils tournent ensemble, chaque montée est associée à la descente de même taille. On ne sépare que si c'est net.
 4. **Recollage** (`engine.should_stitch`) : un appareil qui reprend dans les 6 minutes avec la même puissance (thermostat) reste une seule utilisation.
@@ -76,7 +76,7 @@ sur votre propre maison, rejouez votre historique dans `dev/harness.html` (branc
 ## Limites connues
 
 - Le Linky donne une valeur toutes les 7 à 38 s : un appareil allumé moins de 30 s est invisible.
-- Les petits appareils sans pic de démarrage détectable restent dans le fond permanent ; après une pause de plus de 150 s, une reprise sous 350 W n'est pas détectée.
+- Les petits appareils sans pic de démarrage détectable restent dans le fond permanent ; après une pause de plus de 150 s, une reprise sous le seuil de détection configuré n'est pas détectée.
 - Les paliers faibles peuvent être affichés en cours et nommés, mais ne sont pas suivis par l'algorithme de suivi des grands sauts ; le nom est appliqué après leur fermeture. Les capteurs de marche dédiés ne sont pas garantis pour ces paliers.
 - Les événements déjà enregistrés ne sont pas automatiquement resegmentés. Une estimation séparée du frigo peut compter une seconde fois un événement identifié comme frigo : désactivez-la si vous utilisez ce groupe.
 - Le capteur de puissance du Linky est souvent en VA (puissance apparente) : les kWh affichés par Empreinte sont un peu au-dessus des vrais.

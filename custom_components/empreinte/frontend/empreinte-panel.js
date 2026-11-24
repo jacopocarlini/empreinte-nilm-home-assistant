@@ -12,7 +12,6 @@ const MARKUP = `
   </aside>
   <main>
     <div class="mtop"><div style="display:flex;align-items:center;gap:6px"><button class="icon-btn menu-btn" id="hamenu" title="Menu Home Assistant"></button><div class="brand" style="padding:0"><div class="brand-mark" id="logo2"></div><div><b>Empreinte</b><span id="mstat"></span></div></div></div><div style="display:flex;gap:4px"><button class="icon-btn" id="help2" title="Comment ça marche"></button><button class="icon-btn" id="theme2" title="Thème"></button></div></div>
-    <div id="language-notice" class="sub" style="padding:8px 20px" hidden></div>
     <div id="view"><div class="loading"><div class="spin"></div>Chargement…</div></div>
   </main>
 </div>

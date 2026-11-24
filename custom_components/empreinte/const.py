@@ -6,10 +6,10 @@ CONF_POWER_ENTITY = "power_entity"        # la puissance de toute la maison (W) 
 CONF_LANGUAGE = "language"
 CONF_DETECTION_W = "detection_w"
 DEFAULT_DETECTION_W = 350
-MIN_DETECTION_W = 50
+MIN_DETECTION_W = 10
 MAX_DETECTION_W = 2000
-LANGUAGES = ("fr", "en", "it")
-DEFAULT_LANGUAGE = "fr"
+LANGUAGES = ( "en", "fr", "it")
+DEFAULT_LANGUAGE = "en"
 # Réglages facultatifs (modifiables à tout moment : Paramètres → Appareils et services → Empreinte → Configurer)
 CONF_MEASURED = "measured"                # prises connectées qui mesurent déjà un appareil (retirées de l'analyse)
 CONF_CLIMATE = "climate_entity"           # la clim / pompe à chaleur (son thermostat)

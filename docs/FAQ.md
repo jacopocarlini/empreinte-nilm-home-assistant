@@ -34,7 +34,7 @@ C'est le cas le plus difficile : même puissance, souvent en même temps. Mettez
 
 ### Pourquoi « Non identifié » est si gros ?
 
-Il contient tout ce qui ne fait pas un saut de plus de 350 W : télé, box, lampes, chargeurs, veilles, frigo… Pour le réduire : indiquez la consommation du frigo, ajoutez des compteurs estimés (Powercalc) dans les réglages, et nommez les appareils que vous reconnaissez.
+Il contient tout ce qui ne dépasse pas le seuil de détection configuré (350 W par défaut) : télé, box, lampes, chargeurs, veilles, frigo… Pour le réduire : indiquez la consommation du frigo, ajoutez des compteurs estimés (Powercalc) dans les réglages, et nommez les appareils que vous reconnaissez.
 
 ### Est-ce que ça ralentit Home Assistant ?
 

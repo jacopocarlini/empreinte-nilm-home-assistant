@@ -45,7 +45,7 @@ Empreinte (French for *footprint*) watches the power of your **whole house** (a 
 
 ## How it works
 
-1. **Detect.** Every sudden rise of more than 350 W means something switched on. Empreinte records its power, duration and shape: steady (kettle), thermostat (oven), steps (hob).
+1. **Detect.** Every sudden rise above the configured threshold (350 W by default) means something switched on. Empreinte records its power, duration and shape: steady (kettle), thermostat (oven), steps (hob).
 2. **Group.** Similar switch-ons become "discoveries": "about 2 kW, 3 minutes, several times a day".
 3. **You name.** One click: "it's the kettle". You can also say live "this is the dishwasher right now", and it tracks it to the end, even among other appliances (except low-power plateaus, which are named after the event ends).
 4. **Recognise.** It shows its confidence as a percentage. When it is sure enough, **you** decide to add it to the Energy dashboard.
