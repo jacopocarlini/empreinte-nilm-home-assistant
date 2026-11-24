@@ -80,7 +80,8 @@ Download `empreinte.zip` from the [latest release](https://github.com/nodyxstudi
 | Setting | What it does |
 |---|---|
 | **Panel language** | Set in the panel's **Settings** page or the integration options; French is the default. English and Italian also translate built-in appliance names. Other text may still be in French. |
-| **Detection threshold** | Set in the panel's **Settings** page (50–2,000 W; default 350 W). Smaller thresholds can reveal small loads but are more sensitive to noise and overlapping appliances. Changing the threshold reloads the integration and reanalyses retained history; events and labels may change or be lost, including events older than retained samples. Make a backup first. |
+| **Detection threshold** | Set in the panel's **Settings** page (10–2,000 W; default 350 W). Smaller thresholds can reveal small loads but are more sensitive to noise and overlapping appliances. Changing either detection threshold reloads the integration and reanalyses retained history; events and labels may change or be lost, including events older than retained samples. Make a backup first. |
+| **Small plateau threshold** | Set in the panel's **Settings** page or integration options (1–100 W; default 10 W). Detects increases below the main threshold that remain stable for at least two minutes, relative to the preceding baseline. A 60 W always-on baseline is not itself an appliance event; an additional stable increase can be. Detection does not guarantee identification. |
 | **Smart plugs that already measure a device** | Their power is subtracted before the analysis, so the PC or TV is never mistaken for something else. |
 | **Air conditioner / heat pump** | Its compressor makes the curve go up and down: Empreinte ignores these small steps instead of inventing appliances. |
 | **Its energy meter** | It then gets its own smoothed line in the daily balance. |

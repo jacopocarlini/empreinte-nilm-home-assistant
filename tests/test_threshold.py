@@ -16,25 +16,25 @@ def samples(delta):
 
 def test_threshold_and_low_power_event():
     ts, ps = samples(50)
-    assert not E.segment(ts, ps)[0]
-    events, opened = E.segment(ts, ps, 50)
+    assert not E.segment(ts, ps, plateau_w=100)[0]
+    events, opened = E.segment(ts, ps, 50, 100)
     assert opened is None and len(events) == 1
     event = events[0]
     assert (event["start"], event["end"]) == (T0 + 600, T0 + 1200)
     assert E.features(event["prof"], 12)["P"] == 50
     assert E.live_parts(event["prof"][:10], 50)[0]["h"] == 50
-    assert not E.segment(*samples(49), 50)[0]
+    assert not E.segment(*samples(49), 50, 100)[0]
 
 
 def test_live_and_overlapping_load():
-    live = C.Live(50)
+    live = C.Live(50, 50)
     cents = {"lamp": {"P": 50, "cyc": 0}}
-    for t, power in [(0, 300), (15, 350), (75, 350)]:
+    for t, power in [(0, 300), (15, 350), (195, 350)]:
         live.feed(t, power, cents)
     assert "lamp" in live.running
-    live.feed(90, 300, cents)
-    assert live.running["lamp"]["off_since"] == 90
-    live.feed(255, 300, cents)
+    live.feed(210, 300, cents)
+    assert live.running["lamp"]["off_since"] == 210
+    live.feed(375, 300, cents)
     assert "lamp" not in live.running
     parts = E.split_session([1000] * 8 + [1050] * 8 + [1000] * 8, 50, 50)
     assert len(parts) == 2, parts
@@ -60,6 +60,7 @@ def test_realign_measured_plug_at_low_power():
 
 def test_threshold_change_reanalyses_stored_samples():
     co = make()
+    co.plateau_w = 100
     ts, ps = samples(50)
     co.store.add_samples([(t, p, 0) for t, p in zip(ts, ps)])
     co.processed_until = ts[0]
@@ -68,7 +69,7 @@ def test_threshold_change_reanalyses_stored_samples():
     try:
         co._process()
         assert not co.evs
-        entry = types.SimpleNamespace(data=FakeEntry.data, options={**FakeEntry.options, "detection_w": 50}, entry_id="test")
+        entry = types.SimpleNamespace(data=FakeEntry.data, options={**FakeEntry.options, "detection_w": 50, "plateau_w": 100}, entry_id="test")
         new = C.Coordinator(co.hass, entry)
         new.store = co.store
         new._load()
@@ -78,6 +79,44 @@ def test_threshold_change_reanalyses_stored_samples():
         assert new.state_payload()["status"]["detection_w"] == 50
     finally:
         C.time.time = old_time
+
+
+def test_plateau_threshold_change_reanalyses_stored_samples():
+    co = make()
+    ts = [T0 + t for t in range(0, 1201, 15)]
+    ps = [60 + (10 if 300 <= t < 900 else 0) for t in range(0, 1201, 15)]
+    co.store.add_samples([(t, p, 0) for t, p in zip(ts, ps)])
+    co.store.set_meta("plateau_w", 11)
+    entry = types.SimpleNamespace(data=FakeEntry.data, options={**FakeEntry.options, "plateau_w": 10}, entry_id="test")
+    new = C.Coordinator(co.hass, entry)
+    new.store = co.store
+    new._load()
+    assert new.store.get_meta("plateau_w") == 10
+    old_time = C.time.time
+    C.time.time = lambda: ts[-1]
+    try:
+        new._process()
+        assert len(new.evs) == 1 and new.evs[0].f["P"] == 10
+        assert new.state_payload()["status"]["plateau_w"] == 10
+    finally:
+        C.time.time = old_time
+
+
+def test_upgrade_reanalyses_history_with_unchanged_default_thresholds():
+    co = make()
+    co.store.set_meta("resegment_v7", True)
+    co.store.set_meta(C.RESEGMENT_KEY, False)
+    co.store.set_meta("detection_w", 350)
+    new = C.Coordinator(co.hass, FakeEntry())
+    new.store = co.store
+    calls = []
+    resegment = new._resegment
+    def record_resegment():
+        calls.append(True)
+        resegment()
+    new._resegment = record_resegment
+    new._load()
+    assert calls == [True]
 
 
 if __name__ == "__main__":

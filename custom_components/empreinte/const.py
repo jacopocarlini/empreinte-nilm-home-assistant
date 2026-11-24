@@ -8,6 +8,10 @@ CONF_DETECTION_W = "detection_w"
 DEFAULT_DETECTION_W = 350
 MIN_DETECTION_W = 10
 MAX_DETECTION_W = 2000
+CONF_PLATEAU_W = "plateau_w"
+DEFAULT_PLATEAU_W = 10
+MIN_PLATEAU_W = 1
+MAX_PLATEAU_W = 100
 LANGUAGES = ( "en", "fr", "it")
 DEFAULT_LANGUAGE = "en"
 # Réglages facultatifs (modifiables à tout moment : Paramètres → Appareils et services → Empreinte → Configurer)

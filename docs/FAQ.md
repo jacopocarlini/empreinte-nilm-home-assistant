@@ -34,7 +34,9 @@ C'est le cas le plus difficile : même puissance, souvent en même temps. Mettez
 
 ### Pourquoi « Non identifié » est si gros ?
 
-Il contient tout ce qui ne dépasse pas le seuil de détection configuré (350 W par défaut) : télé, box, lampes, chargeurs, veilles, frigo… Pour le réduire : indiquez la consommation du frigo, ajoutez des compteurs estimés (Powercalc) dans les réglages, et nommez les appareils que vous reconnaissez.
+Il contient les consommations non attribuées à un appareil : bruit, charges trop brèves ou instables, appareils qui se chevauchent… Pour le réduire : indiquez la consommation du frigo, ajoutez des compteurs estimés (Powercalc) dans les réglages, et nommez les appareils que vous reconnaissez.
+
+Une petite variation stable apparaît après 2 minutes si elle atteint le seuil réglable (10 W par défaut), par rapport au niveau précédent. Les cycles de 60–150 W peuvent ainsi être détectés sans pic de démarrage. Une phase faible après une chauffe est traitée séparément, jusqu'à 180 W. Cela ne garantit pas que chaque appareil de cette puissance soit identifiable sur le compteur agrégé.
 
 ### Est-ce que ça ralentit Home Assistant ?
 

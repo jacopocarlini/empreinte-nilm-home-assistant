@@ -50,7 +50,7 @@ def test_schema_and_save_preserves_shared_plugs():
     values = schema[language][0][0][1]["options"]
     assert [v["value"] for v in values] == ["fr", "en", "it"]
     default = next(k for k in F._options_schema({}) if k.key == "language")
-    assert default.kwargs["default"] == "fr"
+    assert default.kwargs["default"] == C.DEFAULT_LANGUAGE
     flow = F.EmpreinteOptions()
     plugs = [{"entity": "sensor.plug", "names": ["Washer"]}]
     flow.config_entry = types.SimpleNamespace(options={"shared_plugs": plugs, "detection_w": 50})
@@ -63,11 +63,11 @@ def test_schema_and_save_preserves_shared_plugs():
 
 def test_payload_and_fallback():
     co = make()
-    assert co.state_payload()["status"]["language"] == "fr"
+    assert co.state_payload()["status"]["language"] == C.DEFAULT_LANGUAGE
     entry = types.SimpleNamespace(data=FakeEntry.data, options={**FakeEntry.options, "language": "it"})
     assert C.Coordinator(types.SimpleNamespace(), entry).language == "it"
     entry.options["language"] = "invalid"
-    assert C.Coordinator(types.SimpleNamespace(), entry).language == "fr"
+    assert C.Coordinator(types.SimpleNamespace(), entry).language == C.DEFAULT_LANGUAGE
 
 
 def test_translation_keys():

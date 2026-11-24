@@ -8,6 +8,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import (CONF_CLIMATE, CONF_CLIMATE_ENERGY, CONF_DETECTION_W, CONF_EXTRA_LINES, CONF_FRIDGE_KWH, CONF_LANGUAGE, CONF_MEASURED,
+                    CONF_PLATEAU_W, DEFAULT_PLATEAU_W, MIN_PLATEAU_W, MAX_PLATEAU_W,
                     CONF_POWER_ENTITY, CONF_SHARED, DEFAULT_LANGUAGE, DOMAIN)
 
 # Mots qui trahissent le capteur de toute la maison (compteur Linky, Shelly EM, Lixee, Tic…)
@@ -52,6 +53,9 @@ def _options_schema(cur: dict) -> vol.Schema:
             selector.EntitySelectorConfig(domain="sensor", device_class="energy")),
         opt(CONF_FRIDGE_KWH, 0): selector.NumberSelector(
             selector.NumberSelectorConfig(min=0, max=1000, step=1, unit_of_measurement="kWh/an",
+                                          mode=selector.NumberSelectorMode.BOX)),
+        opt(CONF_PLATEAU_W, DEFAULT_PLATEAU_W): selector.NumberSelector(
+            selector.NumberSelectorConfig(min=MIN_PLATEAU_W, max=MAX_PLATEAU_W, step=1, unit_of_measurement="W",
                                           mode=selector.NumberSelectorMode.BOX)),
         opt(CONF_EXTRA_LINES, []): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="sensor", device_class="energy", multiple=True)),
@@ -102,7 +106,7 @@ class EmpreinteOptions(config_entries.OptionsFlow):
     async def async_step_reglages(self, user_input=None):
         if user_input is not None:
             # les prises partagées se règlent ailleurs : on les garde telles quelles
-            keep = {key: self.config_entry.options[key] for key in (CONF_SHARED, CONF_DETECTION_W) if key in self.config_entry.options}
+            keep = {key: self.config_entry.options[key] for key in (CONF_SHARED, CONF_DETECTION_W, CONF_PLATEAU_W) if key in self.config_entry.options}
             return self.async_create_entry(data={**keep, **user_input})
         coord = self.hass.data.get(DOMAIN, {}).get("coord")
         cur = dict(self.config_entry.options)

@@ -279,25 +279,34 @@ Object.assign(messages.fr, {
   settings: "Paramètres", settingsDescription: "Choisis la langue et la sensibilité de détection.",
   settingsLanguage: "Langue", settingsThreshold: "Variation minimale de puissance",
   settingsThresholdHelp: "Un seuil bas peut détecter de petites charges, mais aussi du bruit et des appareils superposés. La détection et l'identification des lampes ne sont pas garanties.",
+  settingsPlateau: "Variation minimale d'un petit palier stable",
+  settingsPlateauHelp: "Mesurée par rapport au niveau stable précédent (pas à la puissance totale). Sous le seuil principal, le changement doit rester stable au moins 2 minutes. Cela ne garantit pas l'identification de l'appareil.",
   settingsHistoryWarning: "Modifier le seuil relance l'analyse de l'historique disponible. Les événements et réponses peuvent changer ou disparaître, notamment si les mesures anciennes ne sont plus conservées.",
   settingsSaved: "Paramètres enregistrés. L'intégration se recharge et l'historique peut être réanalysé.",
-  settingsInvalidThreshold: "Saisis un nombre entier entre 50 et 2 000 W.",
+  settingsInvalidThreshold: "Saisis un nombre entier entre 10 et 2 000 W.",
+  settingsInvalidPlateau: "Saisis un nombre entier entre 1 et 100 W.",
 });
 Object.assign(messages.en, {
   settings: "Settings", settingsDescription: "Choose the language and detection sensitivity.",
   settingsLanguage: "Language", settingsThreshold: "Minimum power change",
   settingsThresholdHelp: "A lower threshold can detect small loads, but also noise and overlapping appliances. Light detection and identification are not guaranteed.",
+  settingsPlateau: "Minimum stable small-load change",
+  settingsPlateauHelp: "Measured above the previous stable baseline, not the home's total power. Below the main threshold, the change must remain stable for 2 minutes. This does not guarantee appliance identification.",
   settingsHistoryWarning: "Changing the threshold reruns analysis of the available history. Events and answers may change or disappear, especially if older measurements are no longer retained.",
   settingsSaved: "Settings saved. The integration is reloading and history may be reanalysed.",
-  settingsInvalidThreshold: "Enter a whole number between 50 and 2,000 W.",
+  settingsInvalidThreshold: "Enter a whole number between 10 and 2,000 W.",
+  settingsInvalidPlateau: "Enter a whole number between 1 and 100 W.",
 });
 Object.assign(messages.it, {
   settings: "Impostazioni", settingsDescription: "Scegli la lingua e la sensibilità di rilevamento.",
   settingsLanguage: "Lingua", settingsThreshold: "Variazione minima di potenza",
   settingsThresholdHelp: "Una soglia più bassa può rilevare piccoli carichi, ma anche rumore e dispositivi sovrapposti. Il rilevamento e l'identificazione delle luci non sono garantiti.",
+  settingsPlateau: "Variazione minima di un piccolo livello stabile",
+  settingsPlateauHelp: "Misurata rispetto al livello stabile precedente, non alla potenza totale della casa. Sotto la soglia principale, la variazione deve restare stabile per 2 minuti. Non garantisce l'identificazione del dispositivo.",
   settingsHistoryWarning: "Modificare la soglia riavvia l'analisi dello storico disponibile. Eventi e risposte possono cambiare o scomparire, soprattutto se le misurazioni più vecchie non sono più conservate.",
   settingsSaved: "Impostazioni salvate. L'integrazione si sta ricaricando e lo storico potrebbe essere rianalizzato.",
-  settingsInvalidThreshold: "Inserisci un numero intero tra 50 e 2.000 W.",
+  settingsInvalidThreshold: "Inserisci un numero intero tra 10 e 2.000 W.",
+  settingsInvalidPlateau: "Inserisci un numero intero tra 1 e 100 W.",
 });
 
 Object.assign(messages.fr, {

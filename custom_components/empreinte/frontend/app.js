@@ -860,7 +860,7 @@ function mountGroupe(gid, q) {
 // ---------- Page : Habitudes
 const cap = s => s[0].toUpperCase() + s.slice(1);
 function pageHabitudes() {
-  const hs = findHabits(EVENTS, dayOf, NDAYS, gid => !!(G(gid) && G(gid).name), S.status.detection_w ?? 350);
+  const hs = findHabits(EVENTS, dayOf, NDAYS, gid => !!(G(gid) && G(gid).name), S.status.plateau_w ?? S.status.detection_w ?? 350);
   // ce que tu as déjà nommé se range en bas : seules les habitudes encore inconnues restent en grand
   const known = hs.filter(hb => G(hb.gid) && G(hb.gid).name), todo = hs.filter(hb => !(G(hb.gid) && G(hb.gid).name));
   const perHour = Array(24).fill(0); EVENTS.forEach(e => { if (dayOf(e.start) >= 0) perHour[new Date(e.start).getHours()]++; });
@@ -1133,6 +1133,7 @@ function mountRapport() {
 
 function pageSettings() {
   const threshold = S.status.detection_w ?? 350;
+  const plateau = S.status.plateau_w ?? 10;
   return `<div class="page-h"><div><h1>${tr("settings")}</h1><p class="sub">${tr("settingsDescription")}</p></div></div>
     <form class="card stack" id="settings-form" style="max-width:640px;gap:14px">
       <label for="settings-language">${tr("settingsLanguage")}</label>
@@ -1140,8 +1141,11 @@ function pageSettings() {
         ${[["fr", "Français"], ["en", "English"], ["it", "Italiano"]].map(([value, label]) => `<option value="${value}" ${language === value ? "selected" : ""}>${label}</option>`).join("")}
       </select>
       <label for="settings-threshold">${tr("settingsThreshold")} (W)</label>
-      <input class="field" id="settings-threshold" type="number" min="50" max="2000" step="1" required value="${esc(threshold)}">
+      <input class="field" id="settings-threshold" type="number" min="10" max="2000" step="1" required value="${esc(threshold)}">
       <p class="sub">${tr("settingsThresholdHelp")}</p>
+      <label for="settings-plateau">${tr("settingsPlateau")} (W)</label>
+      <input class="field" id="settings-plateau" type="number" min="1" max="100" step="1" required value="${esc(plateau)}">
+      <p class="sub">${tr("settingsPlateauHelp")}</p>
       <p class="sub">${tr("settingsHistoryWarning")}</p>
       <div><button class="btn primary" type="submit">${tr("save")}</button></div>
       <div id="settings-result" role="status"></div>
@@ -1154,16 +1158,22 @@ function mountSettings() {
     const form = e.currentTarget, button = form.querySelector("button");
     const selected = $("#settings-language", form).value;
     const raw = $("#settings-threshold", form).value, threshold = Number(raw);
-    if (!raw || !Number.isInteger(threshold) || threshold < 50 || threshold > 2000) {
+    const rawPlateau = $("#settings-plateau", form).value, plateau = Number(rawPlateau);
+    if (!raw || !Number.isInteger(threshold) || threshold < 10 || threshold > 2000) {
       $("#settings-result", form).textContent = tr("settingsInvalidThreshold");
+      return;
+    }
+    if (!rawPlateau || !Number.isInteger(plateau) || plateau < 1 || plateau > 100) {
+      $("#settings-result", form).textContent = tr("settingsInvalidPlateau");
       return;
     }
     button.disabled = true;
     try {
-      await call({ type: "empreinte/settings", language: selected, detection_w: threshold });
+      await call({ type: "empreinte/settings", language: selected, detection_w: threshold, plateau_w: plateau });
       setLanguage(selected);
       S.status.language = selected;
       S.status.detection_w = threshold;
+      S.status.plateau_w = plateau;
       $("#settings-result", form).textContent = tr("settingsSaved");
       renderNav();
     } catch (err) {

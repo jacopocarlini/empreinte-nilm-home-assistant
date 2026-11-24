@@ -30,6 +30,76 @@ def test_plateau_duration_power_energy():
     assert E.start_spike(event["prof"]) == 10
 
 
+def small_curve(changes, end=1200):
+    ts = [T0 + t for t in range(0, end + 1, 15)]
+    ps = [60 + sum(delta for a, b, delta in changes if a <= t < b)
+          for t in range(0, end + 1, 15)]
+    return ts, ps
+
+
+def test_small_plateau_is_relative_to_the_preceding_60w_baseline():
+    ts, ps = small_curve([(300, 600, 10)])
+    found, opened = E.segment(ts, ps, 350, 10)
+    assert opened is None and len(found) == 1, (found, opened)
+    assert found[0]["base"] == 60 and found[0]["start"] == T0 + 300
+    assert found[0]["end"] == T0 + 600 and E.features(found[0]["prof"], 12)["P"] == 10
+    assert not E.segment(ts, ps, 350, 11)[0]
+    assert not E.segment(*small_curve([(300, 600, 0)]), 350, 10)[0]
+
+
+def test_short_or_unstable_small_changes_are_rejected():
+    ts, ps = small_curve([(300, 420, 10)])
+    assert not E.segment(ts, ps, 350, 10)[0]
+    ts, ps = small_curve([(300, 750, 10)])
+    for i, t in enumerate(ts):
+        if t >= T0 + 300 and t < T0 + 750:
+            ps[i] += 5 if i % 2 else 0
+    assert not E.segment(ts, ps, 350, 10)[0]
+
+
+def test_small_plateau_range_without_a_startup_spike():
+    for power in (60, 90, 150, 230):
+        ts, ps = small_curve([(300, 900, power)])
+        found, opened = E.segment(ts, ps, 350, 10)
+        assert opened is None and len(found) == 1, (power, found, opened)
+        assert found[0]["start"] == T0 + 300 and found[0]["end"] == T0 + 900
+        assert E.features(found[0]["prof"], 12)["P"] == power
+        co = make()
+        live = co._live_parts(ts[:41], ps[:41], T0 + 300)
+        assert len(live) == 1 and live[0]["p"] == power, (power, live)
+
+
+def test_small_overlapping_load_steps_split_into_distinct_profiles():
+    ts, ps = small_curve([(300, 900, 12), (450, 750, 20)])
+    found, opened = E.segment(ts, ps, 350, 10)
+    assert opened is None and len(found) == 1, (found, opened)
+    parts = E.split_session(found[0]["prof"], 10, 10)
+    assert len(parts) == 2, parts
+    assert sorted(max(prof) for _, prof in parts) == [12, 20], parts
+    coordinated = make()._parts(found[0])
+    assert sorted(part["f"]["P"] for part in coordinated) == [12, 20], coordinated
+    assert E.dist(E.features([12] * 16, 8), E.features([12] * 8 + [0] * 8, 8)) > 1
+    fast_ts, fast_ps = small_curve([(300, 900, 12), (360, 750, 20)])
+    fast, opened = E.segment(fast_ts, fast_ps, 350, 10)
+    assert opened is None and len(fast) == 1 and fast[0]["start"] == T0 + 300, (fast, opened)
+    assert len(E.split_session(fast[0]["prof"], 10, 10)) == 2
+
+
+def test_dishwasher_keeps_stable_low_phase_after_later_heating_peak():
+    ts, ps = small_curve([(300, 420, 1000), (420, 900, 100)])
+    found, opened = E.segment(ts, ps, 350, 10)
+    assert opened is None and len(found) == 1, (found, opened)
+    assert found[0]["start"] == T0 + 300 and found[0]["end"] == T0 + 900
+    assert E.features(found[0]["prof"], 12)["D"] == 600
+
+
+def test_confirmed_group_similarity_uses_the_complete_profile():
+    first = E.features([1000] * 4 + [100] * 12, 8)
+    similar = E.features([950] * 4 + [100] * 12, 8)
+    different = E.features([100] * 12 + [1000] * 4, 8)
+    assert E._kernel(first, similar) > E._kernel(first, different)
+
+
 def test_irregular_sampling_and_short_pause():
     rng = random.Random(42)
     ts = [0]
@@ -53,8 +123,10 @@ def test_isolated_spike_and_independent_load():
         return 1000 if 600 <= t < 615 else 100 if 900 <= t < 1500 else 0
     ts, ps = samples(power)
     found, _ = E.segment(ts, ps)
-    assert len(found) == 1 and found[0]["end"] == T0 + 615, found
+    assert len(found) == 2 and found[0]["end"] == T0 + 615, found
     assert E.features(found[0]["prof"], 12)["P"] == 1000
+    assert found[1]["start"] == T0 + 900 and found[1]["end"] == T0 + 1500
+    assert E.features(found[1]["prof"], 12)["P"] == 100
 
 
 def test_low_plateau_too_short_or_unstable():
@@ -76,7 +148,8 @@ def test_long_pause_ends_event_without_inventing_restart():
         return 0
     ts, ps = samples(power)
     found, opened = E.segment(ts, ps)
-    assert opened is None and len(found) == 1 and found[0]["end"] == T0 + 900, found
+    assert opened is None and len(found) == 2 and found[0]["end"] == T0 + 900, found
+    assert found[1]["start"] == T0 + 1125 and found[1]["end"] == T0 + 1500, found
 
 
 def test_measured_socket_is_not_reattributed():

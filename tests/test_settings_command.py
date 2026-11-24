@@ -35,9 +35,9 @@ def test_settings_command():
                                  config_entries=types.SimpleNamespace(async_update_entry=update))
     result = []
     conn = types.SimpleNamespace(send_result=lambda *args: result.append(args))
-    asyncio.run(module.ws_settings(hass, conn, {"id": 8, "language": "it", "detection_w": 50}))
+    asyncio.run(module.ws_settings(hass, conn, {"id": 8, "language": "it", "detection_w": 50, "plateau_w": 10}))
     assert updates == [{"measured": ["sensor.plug"], "shared_plugs": [{"entity": "sensor.p"}],
-                        "language": "it", "detection_w": 50}]
+                        "language": "it", "detection_w": 50, "plateau_w": 10}]
     assert result == [(8,)]
 
 

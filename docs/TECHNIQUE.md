@@ -4,11 +4,11 @@ Pour les curieux et pour ceux qui veulent modifier le programme. Pour l'utiliser
 
 ## L'algorithme, étape par étape
 
-1. **Découpage** (`engine.segment`) : chaque montée au-dessus du seuil de détection configuré (350 W par défaut) ouvre une utilisation. Le fond est le bas de la courbe sur les 15 dernières minutes calmes ; celui d'une utilisation est le niveau juste avant son saut. Si ce pic retombe en 60 s au plus sur un palier de 60 à 180 W stable pendant 90 s, ce palier peut prolonger l'utilisation avec un seuil d'arrêt relatif. Les pauses jusqu'à 150 s sont conservées. C'est une hypothèse : un autre petit appareil peut produire le même signal.
-2. **Résumé** (`engine.features`) : puissance du palier de départ, durée, part du temps allumé, nombre de marche/arrêt, forme (stable, paliers, cycles), heure.
+1. **Découpage** (`engine.segment`) : une hausse au-dessus du seuil principal (350 W par défaut) ouvre une utilisation. Un second seuil (10 W par défaut) détecte aussi un palier stable pendant au moins 2 minutes, mesuré au-dessus du niveau de fond précédent — pas de la puissance totale de la maison. Il couvre les variations inférieures au seuil principal, y compris les cycles de 60–150 W sans pic de démarrage. Une phase stable jusqu'à 180 W après une chauffe peut prolonger la même utilisation ; les pauses jusqu'à 150 s sont conservées. La courbe agrégée ne permet pas toujours de distinguer deux appareils qui se chevauchent.
+2. **Résumé** (`engine.features`) : puissance du palier de départ, durée, part du temps allumé, nombre de marche/arrêt, forme (stable, paliers, cycles), heure et signature normalisée de la courbe complète.
 3. **Séparation** (`engine.split_session`) : quand plusieurs appareils tournent ensemble, chaque montée est associée à la descente de même taille. On ne sépare que si c'est net.
 4. **Recollage** (`engine.should_stitch`) : un appareil qui reprend dans les 6 minutes avec la même puissance (thermostat) reste une seule utilisation.
-5. **Regroupement** (`engine.dbscan`, `engine.assign`) : les utilisations qui se ressemblent forment un groupe, en respectant les corrections de l'utilisateur. Par-dessus, `engine.probabilities` est un modèle qui apprend des réponses de l'utilisateur : chaque utilisation confirmée vote selon sa ressemblance (puissance, durée, part allumée, cycles, régularité, heure), et le nombre d'exemples donne la fréquence de l'appareil. À partir de 60 % (sur un appareil, ou sur sa catégorie), il nomme ; sinon, pas de nom. Chaque réponse relance le calcul sur les utilisations passées non confirmées. Ces rangements sont marqués « probable » et ne servent pas à l'apprentissage.
+5. **Regroupement** (`engine.dbscan`, `engine.assign`) : les utilisations qui se ressemblent forment un groupe, en respectant les corrections de l'utilisateur. La comparaison prend en compte les résumés et la forme complète de la courbe ; les utilisations confirmées apportent des exemples, sans attribuer automatiquement un nom incertain. Les rangements automatiques restent « probables » et ne servent pas à l'apprentissage.
 6. **Suivi** (`engine.track`) : un appareil désigné (ou reconnu net) est suivi de son démarrage à son arrêt au milieu des autres, avec ses propres sauts, sa tolérance apprise et les pauses longues des programmes.
 7. **Coupures** : plus de 10 minutes sans valeur = coupure ; rien n'est compté pendant le trou et le retour du courant n'est pas pris pour un appareil.
 
@@ -27,6 +27,8 @@ pour chaque ligne, au prix du kWh du tableau Énergie. Une ligne ajoutée au tab
 | Clé (options de l'intégration) | Rôle |
 |---|---|
 | `power_entity` | La puissance de toute la maison (W ou VA). Seul réglage obligatoire, choisi à l'installation. |
+| `detection_w` | Seuil principal des utilisations à forte variation (350 W par défaut). |
+| `plateau_w` | Hausse stable minimale par rapport au fond précédent (10 W par défaut, plage 1–100 W). Les variations sous le seuil principal doivent rester stables 2 minutes ; les phases basses après une chauffe suivent une règle distincte. Le réglage est disponible dans le panneau et les options de l'intégration. Le changement de seuil relance l'analyse de l'historique conservé. |
 | `measured` | Prises qui mesurent déjà un appareil : leur puissance est soustraite avant l'analyse. |
 | `climate_entity` | La clim / pompe à chaleur : quand elle tourne, les sauts de moins de 450 W ne sont pas des appareils. |
 | `climate_energy` | Son compteur de kWh : une ligne lissée dans le bilan, qui ne prend jamais plus que ce que la maison a laissé. |
@@ -76,8 +78,8 @@ sur votre propre maison, rejouez votre historique dans `dev/harness.html` (branc
 ## Limites connues
 
 - Le Linky donne une valeur toutes les 7 à 38 s : un appareil allumé moins de 30 s est invisible.
-- Les petits appareils sans pic de démarrage détectable restent dans le fond permanent ; après une pause de plus de 150 s, une reprise sous le seuil de détection configuré n'est pas détectée.
-- Les paliers faibles peuvent être affichés en cours et nommés, mais ne sont pas suivis par l'algorithme de suivi des grands sauts ; le nom est appliqué après leur fermeture. Les capteurs de marche dédiés ne sont pas garantis pour ces paliers.
-- Les événements déjà enregistrés ne sont pas automatiquement resegmentés. Une estimation séparée du frigo peut compter une seconde fois un événement identifié comme frigo : désactivez-la si vous utilisez ce groupe.
+- Les petits appareils doivent créer une variation stable supérieure au fond précédent. Une variation plus faible que le seuil, ou trop courte/bruitée, reste dans le fond. Une puissance agrégée ne permet pas de confirmer l'identité d'un appareil.
+- Les paliers faibles peuvent être détectés et regroupés, mais les capteurs de marche dédiés ne sont pas garantis pour eux. Le suivi en direct exige une confirmation plus longue pour ces petites puissances.
+- Une modification d'un seuil resegmente l'historique encore conservé ; des événements/réponses peuvent donc changer ou ne plus avoir d'équivalent. Une estimation séparée du frigo peut compter une seconde fois un événement identifié comme frigo : désactivez-la si vous utilisez ce groupe.
 - Le capteur de puissance du Linky est souvent en VA (puissance apparente) : les kWh affichés par Empreinte sont un peu au-dessus des vrais.
 - Des plaques à induction qui changent souvent de puissance, en même temps que le four, restent le cas le plus difficile.
