@@ -7,8 +7,8 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
-from .const import (CONF_CLIMATE, CONF_CLIMATE_ENERGY, CONF_EXTRA_LINES, CONF_FRIDGE_KWH, CONF_MEASURED,
-                    CONF_POWER_ENTITY, CONF_SHARED, DOMAIN)
+from .const import (CONF_CLIMATE, CONF_CLIMATE_ENERGY, CONF_EXTRA_LINES, CONF_FRIDGE_KWH, CONF_LANGUAGE, CONF_MEASURED,
+                    CONF_POWER_ENTITY, CONF_SHARED, DEFAULT_LANGUAGE, DOMAIN)
 
 # Mots qui trahissent le capteur de toute la maison (compteur Linky, Shelly EM, Lixee, Tic…)
 _HOUSE_WORDS = ("linky", "zlinky", "lixee", "papp", "sinsts", "reseau", "réseau", "grid", "compteur", "maison", "house",
@@ -40,6 +40,12 @@ def _options_schema(cur: dict) -> vol.Schema:
     def opt(key, default):
         return vol.Optional(key, description={"suggested_value": cur.get(key, default)})
     return vol.Schema({
+        vol.Required(CONF_LANGUAGE, default=cur.get(CONF_LANGUAGE, DEFAULT_LANGUAGE)): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=[
+                {"value": "fr", "label": "Français"},
+                {"value": "en", "label": "English"},
+                {"value": "it", "label": "Italiano"},
+            ])),
         opt(CONF_MEASURED, []): _power_selector(multiple=True, classes=("power",)),
         opt(CONF_CLIMATE, None): selector.EntitySelector(selector.EntitySelectorConfig(domain="climate")),
         opt(CONF_CLIMATE_ENERGY, None): selector.EntitySelector(

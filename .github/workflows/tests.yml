@@ -31,11 +31,14 @@ jobs:
           python tests/test_mesure_prise.py
           python tests/test_deux_a_la_fois.py
           python tests/test_decalage.py
+          python tests/test_cycles_faibles.py
+          python tests/test_language.py
           python tests/test_fil_principal.py
           python tests/test_reanalyse.py
           python tests/test_classement_zero.py
           python tests/test_lignes_orphelines.py
           python tests/test_veilles.py
           node tests/test_habits.mjs
+          node tests/test_i18n.mjs
       - name: Suivi d'appareils
         run: python tests/test_tracking.py

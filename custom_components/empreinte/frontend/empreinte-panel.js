@@ -5,13 +5,14 @@ const V = new URL(import.meta.url).search;
 const MARKUP = `
 <div class="app">
   <aside class="side">
-    <div class="brand"><div class="brand-mark" id="logo1"></div><div><b>Empreinte</b><span>Détection d'appareils</span></div></div>
+    <div class="brand"><div class="brand-mark" id="logo1"></div><div><b>Empreinte</b><span id="brand-caption">Détection d'appareils</span></div></div>
     <nav class="nav" id="nav"></nav>
     <div class="status" id="status"></div>
     <div class="side-foot"><span id="home"></span><div style="display:flex;gap:4px"><button class="icon-btn" id="help1" title="Comment ça marche"></button><button class="icon-btn" id="theme" title="Thème"></button></div></div>
   </aside>
   <main>
     <div class="mtop"><div style="display:flex;align-items:center;gap:6px"><button class="icon-btn menu-btn" id="hamenu" title="Menu Home Assistant"></button><div class="brand" style="padding:0"><div class="brand-mark" id="logo2"></div><div><b>Empreinte</b><span id="mstat"></span></div></div></div><div style="display:flex;gap:4px"><button class="icon-btn" id="help2" title="Comment ça marche"></button><button class="icon-btn" id="theme2" title="Thème"></button></div></div>
+    <div id="language-notice" class="sub" style="padding:8px 20px" hidden></div>
     <div id="view"><div class="loading"><div class="spin"></div>Chargement…</div></div>
   </main>
 </div>

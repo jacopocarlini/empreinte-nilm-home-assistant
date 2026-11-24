@@ -47,7 +47,7 @@ Empreinte (French for *footprint*) watches the power of your **whole house** (a 
 
 1. **Detect.** Every sudden rise of more than 350 W means something switched on. Empreinte records its power, duration and shape: steady (kettle), thermostat (oven), steps (hob).
 2. **Group.** Similar switch-ons become "discoveries": "about 2 kW, 3 minutes, several times a day".
-3. **You name.** One click: "it's the kettle". You can also say live "this is the dishwasher right now", and it tracks it to the end, even among other appliances.
+3. **You name.** One click: "it's the kettle". You can also say live "this is the dishwasher right now", and it tracks it to the end, even among other appliances (except low-power plateaus, which are named after the event ends).
 4. **Recognise.** It shows its confidence as a percentage. When it is sure enough, **you** decide to add it to the Energy dashboard.
 
 ### You stay in control
@@ -79,6 +79,7 @@ Download `empreinte.zip` from the [latest release](https://github.com/nodyxstudi
 
 | Setting | What it does |
 |---|---|
+| **Panel language** | French by default; English and Italian translate navigation, headings and dates. Other text and entity names may still be in French. The settings form follows the Home Assistant language. |
 | **Smart plugs that already measure a device** | Their power is subtracted before the analysis, so the PC or TV is never mistaken for something else. |
 | **Air conditioner / heat pump** | Its compressor makes the curve go up and down: Empreinte ignores these small steps instead of inventing appliances. |
 | **Its energy meter** | It then gets its own smoothed line in the daily balance. |
@@ -108,7 +109,9 @@ Everything is computed on your machine. Empreinte sends nothing to the internet:
 
 ## Good to know
 
-- Empreinte sees **appliances above 350 W**. Small ones stay in the always-on background.
+- Empreinte primarily detects **starts above 350 W**. A stable 60–180 W plateau immediately after a short spike may also be retained; small appliances without a spike stay in the background. A pause longer than 150 s ends this type of event, and a restart without another spike cannot be detected.
+- A plateau after a spike is an **inference**, not proof: a different small appliance might have started at the same time. Existing recorded events are not automatically reanalysed. If you name a group "Fridge", disable the separate fridge estimate to avoid counting the same consumption twice.
+- Low-power plateaus can be named live, but the name is applied when the event ends; dedicated tracking and live running sensors are not guaranteed for them.
 - An appliance on for **less than 30 seconds** is often missed: the meter does not give enough readings.
 - It needs **a few uses** of each appliance before being really sure.
 - The hardest case: two appliances of similar power at the same time (oven and hob). That is what categories are for.

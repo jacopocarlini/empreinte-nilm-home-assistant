@@ -91,6 +91,27 @@ def realign(ts: list[float], ps: list[float], subs: list[float]) -> list[float]:
 
 CREEP_S = 90         # une montée en plusieurs petits paliers qui tient 90 s au-dessus de ON_W ouvre un événement
 CREEP_OFF_FRAC = 0.6  # … et se termine sous 60 % de son pic
+LOW_MIN_W = 60
+LOW_MAX_W = 180
+LOW_STABLE_S = 90
+LOW_SPIKE_S = 60
+
+
+def _low_start(prof):
+    """Palier faible et stable juste après un bref pic, ou None si les indices sont insuffisants."""
+    for k in range(1, min(len(prof), LOW_SPIKE_S // STEP + 1)):
+        if not LOW_MIN_W <= prof[k] <= LOW_MAX_W:
+            continue
+        win = prof[k:k + LOW_STABLE_S // STEP]
+        if len(win) < LOW_STABLE_S // STEP:
+            return None
+        level = engine_median(win)
+        if (LOW_MIN_W <= level <= LOW_MAX_W
+                and min(prof[:k]) > ON_W and max(prof[:k]) >= 2 * level
+                and max(abs(v - level) for v in win) <= max(20, 0.25 * level)):
+            return float(level), k
+        return None
+    return None
 
 
 def segment(ts: list[float], ps: list[float]):
@@ -110,6 +131,8 @@ def segment(ts: list[float], ps: list[float]):
     rearm = None                 # après une coupure : on n'ouvre rien avant cet instant
     run_i = None                 # début d'une montée lente (au-dessus du fond, sans saut assez franc)
     creep = False
+    low_candidate = None
+    low_level = None
 
     def close(i_next):
         t0 = ts[i_start]
@@ -126,6 +149,7 @@ def segment(ts: list[float], ps: list[float]):
             if i_start is not None:
                 close(None)
                 i_start = None
+            low_candidate, low_level = None, None
             quiet, base, rearm, run_i = deque(), None, t + REARM_S, None
         prev_t = t
         if rearm is not None and t < rearm:
@@ -159,6 +183,7 @@ def segment(ts: list[float], ps: list[float]):
                     continue
                 run_i = None
                 i_start, last_above, peak_ev, creep = i, i, p - base_ev, False
+                low_candidate, low_level = None, None
                 continue
             if p - base > OFF_W:
                 if run_i is None:
@@ -170,20 +195,35 @@ def segment(ts: list[float], ps: list[float]):
                 quiet.popleft()
             base = quantile([q[1] for q in quiet], 0.2)
         else:
+            if low_candidate is not None and low_level is None and t - ts[low_candidate] >= LOW_STABLE_S:
+                candidate_prof = profile(ts, ps, i_start, ts[i_start], t, base_ev)
+                low = _low_start(candidate_prof)
+                if low:
+                    low_level = low[0]
+                    last_above = i - 1
+                low_candidate = None
+            if (not creep and low_level is None and low_candidate is None
+                    and t - ts[i_start] <= LOW_SPIKE_S
+                    and LOW_MIN_W <= p - base_ev <= LOW_MAX_W):
+                low_candidate = i
             # L'appareil est éteint quand la courbe redescend franchement : sous OFF_W, ou sous un tiers
             # de son pic (un petit appareil allumé entre-temps ne doit pas prolonger l'utilisation).
             peak_ev = max(peak_ev, p - base_ev)
             # (une montée lente se compte depuis le fond : elle s'arrête plus tôt, pour ne pas garder un petit appareil
             # resté allumé après elle)
-            if p - base_ev > max(OFF_W, (CREEP_OFF_FRAC if creep else OFF_FRAC) * peak_ev):
+            threshold = max(30, 0.5 * low_level) if low_level is not None else max(
+                OFF_W, (CREEP_OFF_FRAC if creep else OFF_FRAC) * peak_ev)
+            if p - base_ev > threshold:
                 if t - ts[i_start] > MAX_EVENT_S:
                     close(i)
                     i_start, last_above = i, i
+                    low_candidate, low_level = None, None
                 else:
                     last_above = i
-            elif t - ts[last_above] > GAP_S:
+            elif t - ts[last_above] > GAP_S and low_candidate is None:
                 close(last_above + 1)
                 i_start, run_i, creep = None, None, False
+                low_level = None
                 quiet = deque(q for q in quiet if q[0] >= t - BASE_WIN_S)
                 quiet.append((t, p))
                 base = quantile([q[1] for q in quiet], 0.2)
@@ -265,6 +305,21 @@ def split_session(prof: list[int], min_edge: int = EDGE_W) -> list[tuple[int, li
     On ne sépare que si tous les appareils trouvés sont nets, sauf un au plus dont on voit
     au moins le démarrage ou l'arrêt.
     """
+    low = _low_start(prof)
+    if low:
+        level, k0 = low
+        own = [v if k < k0 else min(v, round(level)) for k, v in enumerate(prof)]
+        rest = [v - own[k] for k, v in enumerate(prof)]
+        spans = _pair(rest, min_edge=min_edge)
+        if (len(spans) == 1 and spans[0][3] and spans[0][4]
+                and spans[0][2] >= ON_W):
+            a, b = spans[0][:2]
+            if sum(rest[a:b]) >= 0.9 * sum(rest):
+                for k in range(len(own)):
+                    if not a <= k < b:
+                        own[k] += rest[k]
+                return [(0, own), (a, rest[a:b])]
+        return [(0, prof)]
     n = len(prof)
     spans = _pair(prof, min_edge=min_edge)
     if not spans:
@@ -378,6 +433,15 @@ def live_parts(prof: list[int]) -> list[dict]:
     Chaque montée est associée à la descente de même taille ; les marche/arrêt de même hauteur
     (thermostat) restent un seul appareil. Retourne [{k0, k1, h, n, running}].
     """
+    low = _low_start(prof)
+    if low:
+        level, k0 = low
+        rest = [0 if k < k0 else max(0, v - round(level)) for k, v in enumerate(prof)]
+        body = prof[k0:]
+        threshold = max(30, level * 0.5)
+        cycles = 1 + sum(body[k] >= threshold and body[k - 1] < threshold for k in range(1, len(body)))
+        return [{"k0": 0, "k1": len(prof), "h": round(level), "n": cycles,
+                 "running": prof[-1] > threshold, "low": True}] + live_parts(rest)
     n = len(prof)
     out = []
     for c in _components(_pair(prof, closed=False)):
@@ -618,6 +682,9 @@ def _start(prof: list[int], spike: bool = True) -> tuple[float | None, int, bool
     """Puissance propre d'un appareil : la hauteur de sa marche de départ, une fois son pic de démarrage retombé
     (chauffage à céramique : 1,6 kW quelques secondes puis 700 W), et avant que quoi que ce soit d'autre démarre
     (micro-ondes lancé 1 min après les plaques). Une seule règle, utilisée partout. None si on ne peut pas la lire."""
+    low = _low_start(prof)
+    if low:
+        return low[0], low[1], True
     n = len(prof)
     if n < 2:
         return None, 0, False
@@ -765,8 +832,11 @@ SPIKE_SEEN, SPIKE_PENALTY = 1.3, 6.0
 def start_spike(prof: list[int], level: float | None = None, before: float = 0) -> float | None:
     """Le pic de démarrage : le haut de la première minute divisé par le régime de l'appareil (chauffage à céramique : 2 fois).
     None quand on ne peut pas le lire (profil recoupé, à plat : son début réel n'est plus là)."""
-    if len(prof) < 4 or (level is None and len(set(prof)) <= 2):
+    low = _low_start(prof)
+    if len(prof) < 4 or (level is None and not low and len(set(prof)) <= 2):
         return None
+    if level is None and low:
+        level = low[0]
     on = [v for v in prof if v > 150] or list(prof)
     return round((max(prof[:4]) - before) / max(level or engine_median(on), 1), 2)
 

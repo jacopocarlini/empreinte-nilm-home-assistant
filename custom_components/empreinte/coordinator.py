@@ -18,7 +18,7 @@ from homeassistant.util import dt as dt_util
 
 from . import engine
 from .engine import engine_median
-from .const import (APPLIANCE_TIPS, CLIM_LAG_KWH, PROGRAMME_GAP_S, TIP_IDS, CLIM_MAX_W, VEILLE_NAME, HYP_MIN_DAYS, HYP_MIN_N, HYP_MIN_SCORE, AUTO_NAME_COHERENCE, AUTO_NAME_DAYS, AUTO_NAME_MARGIN, AUTO_NAME_MIN, AUTO_NAME_SCORE, BACKFILL_DAYS, CONF_CLIMATE, CONF_CLIMATE_ENERGY, CONF_EXTRA_LINES, CONF_FRIDGE_KWH, CONF_MEASURED, CONF_SHARED, CONF_POWER_ENTITY, DATA_DIR, DB_FILE, DOMAIN,
+from .const import (APPLIANCE_TIPS, CLIM_LAG_KWH, PROGRAMME_GAP_S, TIP_IDS, CLIM_MAX_W, VEILLE_NAME, HYP_MIN_DAYS, HYP_MIN_N, HYP_MIN_SCORE, AUTO_NAME_COHERENCE, AUTO_NAME_DAYS, AUTO_NAME_MARGIN, AUTO_NAME_MIN, AUTO_NAME_SCORE, BACKFILL_DAYS, CONF_CLIMATE, CONF_CLIMATE_ENERGY, CONF_EXTRA_LINES, CONF_FRIDGE_KWH, CONF_LANGUAGE, CONF_MEASURED, CONF_SHARED, CONF_POWER_ENTITY, DEFAULT_LANGUAGE, LANGUAGES, DATA_DIR, DB_FILE, DOMAIN,
                     EVENTS_SENT_DAYS, PROCESS_EVERY_S, SAMPLES_KEEP_DAYS)
 from .shared import ON_W as SHARED_ON_W, SharedPlugs
 from .store import Store
@@ -163,6 +163,10 @@ class Coordinator:
         self.hass = hass
         self.entry = entry
         opts = {**entry.data, **entry.options}
+        self.language = opts.get(CONF_LANGUAGE, DEFAULT_LANGUAGE)
+        if self.language not in LANGUAGES:
+            _LOGGER.warning("Empreinte : langue inconnue %r, français utilisé", self.language)
+            self.language = DEFAULT_LANGUAGE
         self.power_entity = entry.data.get(CONF_POWER_ENTITY)
         self.climate_entity = opts.get(CONF_CLIMATE) or None          # réglages facultatifs (voir const.py)
         self.clim_energy = opts.get(CONF_CLIMATE_ENERGY) or None
@@ -1352,7 +1356,7 @@ class Coordinator:
         """Un appareil déjà connu et long (four, lave-vaisselle…) qui démarre est suivi tout seul, mais
         seulement si c'est net : pour une ressemblance moins nette, il est seulement proposé."""
         for x in self.running_parts:
-            if x["end"] or not x.get("hint_group"):
+            if x["end"] or x.get("low") or not x.get("hint_group"):
                 continue
             # on attend que le pic de démarrage soit passé : un chauffage à céramique tire 1,6 kW quelques secondes
             # (la puissance du lave-vaisselle) avant de se stabiliser vers 800 W
@@ -1755,7 +1759,8 @@ class Coordinator:
             f["shape"] = engine.shape_of(f)
             hint, hint_group = self._hint_for(f)
             out.append({"start": start, "end": None if c["running"] else open_start + c["k1"] * engine.STEP,
-                        "p": c["h"], "n": c["n"], "hint": hint, "hint_group": hint_group})
+                        "p": c["h"], "n": c["n"], "hint": hint, "hint_group": hint_group,
+                        **({"low": True} if c.get("low") else {})})
         return out
 
     def _hint_for(self, f):
@@ -1792,7 +1797,8 @@ class Coordinator:
             if len(pieces) > 1:
                 f["split"] = True
                 # le morceau est recoupé à plat : son pic se lit sur la courbe d'origine, au-dessus de ce qui tournait déjà
-                f["spike"] = engine.start_spike(e["prof"][k0:k0 + 4], max(prof), e["prof"][k0 - 1] if k0 else 0)
+                level = f["P"] if engine._low_start(prof) else max(prof)
+                f["spike"] = engine.start_spike(e["prof"][k0:k0 + 4], level, e["prof"][k0 - 1] if k0 else 0)
             else:
                 f["spike"] = engine.start_spike(prof)
             out.append({"start": start, "end": start + len(prof) * engine.STEP, "base": e["base"], "prof": prof, "f": f})
@@ -2299,8 +2305,10 @@ class Coordinator:
             at, pw = msg.get("at"), msg.get("p") or 1
             running = at and any(abs(x["start"] - at) <= 60 and abs(x["p"] - pw) / max(x["p"], pw) <= 0.35 and not x["end"]
                                  for x in self.running_parts)
+            low = any(x.get("low") and abs(x["start"] - at) <= 60
+                      and abs(x["p"] - pw) / max(x["p"], pw) <= 0.35 for x in self.running_parts) if at else False
             started = bool(running and not msg.get("maybe") and self.open_start is not None and at >= self.open_start - 60
-                           and self._start_track(msg["name"].strip()[:40], at, pw, user=True))
+                           and not low and self._start_track(msg["name"].strip()[:40], at, pw, user=True))
             if not started:
                 self.pending.append({"t": time.time(), "name": msg["name"].strip()[:40], "maybe": bool(msg.get("maybe")),
                                      "at": at, "p": msg.get("p")})
@@ -2527,7 +2535,7 @@ class Coordinator:
                            "shape": c["shape"] if c else None, "entities": self.entity_ids(g["id"])})
         return {
             "groups": groups, "events": evs, "kinds": {**{k: v[0] for k, v in engine.KINDS.items()}, **self.learned_labels},
-            "status": {"verdicts": self._verdict_summary(), "categories": [{**{k: v for k, v in c.items() if k != "counted"}, "power": self.cat_power(c["id"])} for c in self.cats],
+            "status": {"language": self.language, "verdicts": self._verdict_summary(), "categories": [{**{k: v for k, v in c.items() if k != "counted"}, "power": self.cat_power(c["id"])} for c in self.cats],
                        "energy_log": [{**x, "entity": self._energy_entity(x["target"]), "in_dash": self._in_dash(x["target"])}
                                       for x in self.energy_log[-200:]], "last_run": self.last_run, "error": self.last_error, "n_events": len(self.evs),
                        "first_sample": self._first, "power_entity": self.power_entity,

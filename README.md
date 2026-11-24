@@ -45,7 +45,7 @@ Empreinte regarde la consommation de **toute la maison** (celle que donne le com
 
 1. **Il repère.** Chaque montée d'un coup de plus de 350 W, c'est quelque chose qui s'allume. Empreinte note sa puissance, sa durée et sa forme : stable (bouilloire), thermostat (four), paliers (plaques).
 2. **Il regroupe.** Les allumages qui se ressemblent forment des « découvertes » : « environ 2 kW, 3 minutes, plusieurs fois par jour ».
-3. **Vous nommez.** D'un clic : « c'est la bouilloire ». Vous pouvez aussi dire en direct « là, c'est le lave-vaisselle », et il le suit jusqu'à la fin, même au milieu d'autres appareils.
+3. **Vous nommez.** D'un clic : « c'est la bouilloire ». Vous pouvez aussi dire en direct « là, c'est le lave-vaisselle », et il le suit jusqu'à la fin, même au milieu d'autres appareils (sauf les paliers faibles, nommés à la fin).
 4. **Il reconnaît.** Il affiche sa certitude en pourcentage. Quand il est assez sûr, **vous** décidez de l'ajouter au tableau Énergie.
 
 ### Vous gardez la main
@@ -95,6 +95,7 @@ Téléchargez `empreinte.zip` dans la [dernière version](https://github.com/nod
 
 | Réglage | À quoi ça sert |
 |---|---|
+| **Langue du panneau** | Français par défaut ; anglais et italien traduisent la navigation, les titres et les dates. Les autres textes et noms d'entités peuvent rester en français. La langue du formulaire suit Home Assistant. |
 | **Prises qui mesurent déjà un appareil** | Leur puissance est retirée avant l'analyse : le PC ou la télé ne sont jamais pris pour autre chose. |
 | **Clim / pompe à chaleur** | Son compresseur fait monter et descendre la courbe : Empreinte ignore ces petits paliers au lieu d'inventer des appareils. |
 | **Son compteur d'énergie** | Elle a alors sa propre ligne dans le bilan, lissée heure par heure. |
@@ -122,7 +123,9 @@ Un appareil désormais branché sur une prise mesurée (le micro-ondes, par exem
 
 ## Bon à savoir
 
-- Empreinte voit les **appareils de plus de 350 W**. Les petits (chargeurs, lampes, box) restent dans le fond toujours allumé.
+- Empreinte détecte surtout les **démarrages de plus de 350 W**. Après un pic bref, un palier stable de 60 à 180 W peut aussi être conservé ; les petits appareils sans pic restent dans le fond. Une pause de plus de 150 s termine ce type d'événement et une reprise sans nouveau pic ne peut pas être détectée.
+- Le palier après un pic reste une **hypothèse**, pas une preuve : un autre petit appareil peut être allumé au même moment. Les événements déjà enregistrés ne sont pas recalculés automatiquement. Si vous nommez un groupe « Frigo », désactivez l'estimation séparée du frigo pour éviter de compter deux fois la même consommation.
+- Les paliers faibles peuvent être nommés en direct, mais le nom est appliqué à la fin de l'événement ; leur suivi dédié et leurs capteurs en marche ne sont pas garantis en direct.
 - Un appareil allumé **moins de 30 secondes** passe souvent inaperçu : le compteur ne donne pas assez de mesures.
 - Il faut **quelques utilisations** de chaque appareil avant qu'il soit vraiment sûr de lui.
 - Le cas le plus dur : deux appareils de puissance proche en même temps (four et plaques). C'est pour ça que les catégories existent.

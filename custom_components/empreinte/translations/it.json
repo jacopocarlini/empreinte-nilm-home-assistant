@@ -1,0 +1,72 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Empreinte",
+        "description": "Scegli il sensore che misura la **potenza totale della casa** in watt, ad esempio uno Shelly EM o una pinza amperometrica. Empreinte analizza questa curva localmente in Home Assistant.",
+        "data": {
+          "power_entity": "Sensore della potenza totale"
+        },
+        "data_description": {
+          "power_entity": "Potenza totale della casa in tempo reale (W), aggiornata ogni pochi secondi."
+        }
+      }
+    },
+    "error": {
+      "not_found": "Questo sensore non esiste o non è ancora disponibile."
+    },
+    "abort": {
+      "already_configured": "Empreinte è già configurato."
+    }
+  },
+  "options": {
+    "step": {
+      "reglages": {
+        "title": "Impostazioni Empreinte",
+        "description": "Le altre impostazioni sono facoltative: lascia vuoti i campi che non riguardano la tua casa.",
+        "data": {
+          "language": "Lingua del pannello (traduzione parziale)",
+          "measured": "Prese intelligenti che misurano già un dispositivo",
+          "climate_entity": "Climatizzatore / pompa di calore",
+          "climate_energy": "Contatore di energia del climatizzatore",
+          "fridge_kwh_year": "Consumo del frigorifero",
+          "extra_lines": "Altri contatori di energia stimati"
+        },
+        "data_description": {
+          "language": "La navigazione e le date del pannello sono tradotte. Altri testi e i nomi delle entità possono restare in francese. La lingua di Home Assistant determina quella di questo modulo.",
+          "measured": "La loro potenza viene sottratta prima dell'analisi, per evitare di attribuire questi consumi ad altri dispositivi.",
+          "climate_entity": "Quando è in funzione, Empreinte ignora le piccole variazioni del compressore invece di rilevare falsi dispositivi.",
+          "climate_energy": "Il suo contatore kWh, se presente: avrà una voce nel bilancio giornaliero.",
+          "fridge_kwh_year": "Consumo annuale in kWh indicato sull'etichetta energetica. Viene stimato e sottratto dai consumi non identificati. 0 = nessuna stima.",
+          "extra_lines": "Ad esempio i contatori Powercalc per luci o router: vengono sottratti dai consumi non identificati, senza aggiungerli al pannello Energia."
+        }
+      },
+      "init": {
+        "title": "Impostazioni Empreinte",
+        "menu_options": {
+          "reglages": "Impostazioni generali",
+          "prises": "Prese condivise tra più dispositivi"
+        }
+      },
+      "prises": {
+        "title": "Prese condivise",
+        "description": "Una presa intelligente alimenta più dispositivi **mai contemporaneamente**, ad esempio lavatrice e asciugatrice. Empreinte analizza la curva della presa per riconoscere quale è stato utilizzato.\n\nPrese configurate:\n{current}",
+        "data": {
+          "shared_plug": "Aggiungi o modifica una presa",
+          "shared_names": "Dispositivi collegati",
+          "shared_remove": "Rimuovi queste prese"
+        },
+        "data_description": {
+          "shared_plug": "Il sensore di potenza (W) della presa intelligente.",
+          "shared_names": "Nomi separati da virgole. Per riconoscere un dispositivo, conferma un suo programma nel pannello Empreinte.",
+          "shared_remove": "I relativi sensori Empreinte vengono rimossi da Home Assistant."
+        }
+      }
+    },
+    "error": {
+      "names_needed": "Inserisci i nomi dei dispositivi collegati.",
+      "plug_needed": "Scegli una presa intelligente.",
+      "house_sensor": "Questo è il sensore della casa, non una presa."
+    }
+  }
+}

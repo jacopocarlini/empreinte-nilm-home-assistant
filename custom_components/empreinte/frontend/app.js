@@ -1,6 +1,7 @@
 // Interface d'Empreinte : lit les données de l'intégration par la WebSocket de HA.
 "use strict";
 const { findHabits, habitHints, periodOf, HABIT } = await import(new URL("habits.js" + new URL(import.meta.url).search, import.meta.url).href);
+const { locale, translate } = await import(new URL("i18n.js" + new URL(import.meta.url).search, import.meta.url).href);
 
 // ---------- Outils
 const $ = (s, r = document) => r.querySelector(s);
@@ -9,9 +10,24 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": 
 const median = a => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const quant = (a, q) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(q * s.length))]; };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const nf1 = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
-const nf0 = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
-const nf2 = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+let language = "fr";
+const tr = key => translate(language, key);
+let nf1, nf0, nf2, dfDay, dfLong;
+function setLanguage(lang) {
+  language = ["fr", "en", "it"].includes(lang) ? lang : "fr";
+  const loc = locale(language);
+  nf1 = new Intl.NumberFormat(loc, { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+  nf0 = new Intl.NumberFormat(loc, { maximumFractionDigits: 0 });
+  nf2 = new Intl.NumberFormat(loc, { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+  dfDay = new Intl.DateTimeFormat(loc, { weekday: "short", day: "numeric", month: "short" });
+  dfLong = new Intl.DateTimeFormat(loc, { weekday: "long", day: "numeric", month: "long" });
+  $("#brand-caption").textContent = tr("detection");
+  ["#help1", "#help2"].forEach(s => { $(s).title = tr("help"); });
+  if (!(hass && hass.config && hass.config.location_name)) $("#home").textContent = tr("home");
+  const notice = $("#language-notice");
+  notice.textContent = tr("partial");
+  notice.hidden = !notice.textContent;
+}
 const PRIX = 0.22033;   // €/kWh, celui saisi dans HA
 const STEP = 15;        // s, pas de la courbe envoyée par l'intégration
 const N = 86400 / STEP;
@@ -21,8 +37,6 @@ const fmtEur = k => nf2.format(k * PRIX) + " €";
 const fmtDur = s => { s = Math.round(s); if (s < 60) return s + " s"; if (s < 3600) return Math.round(s / 60) + " min"; const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60); return h + " h" + (m ? " " + String(m).padStart(2, "0") : ""); };
 const pad = n => String(n).padStart(2, "0");
 const fmtHM = ms => { const d = new Date(ms); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
-const dfDay = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "numeric", month: "short" });
-const dfLong = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 const slug = s => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "appareil";
 const ago = ms => { const s = (Date.now() - ms) / 1000; if (s < 90) return "à l'instant"; if (s < 3600) return `il y a ${Math.round(s / 60)} min`; if (s < 86400) return `il y a ${Math.round(s / 3600)} h`; return `il y a ${Math.round(s / 86400)} j`; };
 
@@ -40,14 +54,15 @@ function dayKey(d) { const x = new Date(dayStartMs(d)); return `${x.getFullYear(
 const dayOf = ms => { for (let d = NDAYS - 1; d >= 0; d--) if (ms >= dayStartMs(d)) return d; return -1; };
 function fmtWhen(ms) {
   const d = dayOf(ms), today = NDAYS - 1;
-  if (d === today) return "Aujourd'hui " + fmtHM(ms);
-  if (d === today - 1) return "Hier " + fmtHM(ms);
+  if (d === today) return tr("today") + " " + fmtHM(ms);
+  if (d === today - 1) return tr("yesterday") + " " + fmtHM(ms);
   return dfDay.format(ms) + " " + fmtHM(ms);
 }
-function dayLabel(d) { if (d === NDAYS - 1) return "Aujourd'hui"; if (d === NDAYS - 2) return "Hier"; const s = dfLong.format(dayStartMs(d)); return s[0].toUpperCase() + s.slice(1); }
+function dayLabel(d) { if (d === NDAYS - 1) return tr("today"); if (d === NDAYS - 2) return tr("yesterday"); const s = dfLong.format(dayStartMs(d)); return s[0].toUpperCase() + s.slice(1); }
 
 function applyState(st) {
   S.groups = st.groups; S.kinds = st.kinds; S.status = st.status;
+  setLanguage(st.status.language);
   EVENTS = st.events.sort((a, b) => a.start - b.start);
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const first = st.status.first_sample ? new Date(st.status.first_sample * 1000) : new Date();
@@ -544,7 +559,7 @@ function validateModal(gid) {
 }
 
 // ---------- Navigation
-const PAGES = [["apercu", "Aperçu", "home"], ["decouvertes", "Découvertes", "spark"], ["habitudes", "Habitudes", "clock"], ["carte", "Carte", "map"], ["appareils", "Appareils", "zap"], ["rapport", "Rapport", "report"]];
+const PAGES = [["apercu", "overview", "home"], ["decouvertes", "discoveries", "spark"], ["habitudes", "habits", "clock"], ["carte", "map", "map"], ["appareils", "appliances", "zap"], ["rapport", "report", "report"]];
 // Navigation interne : HA affiche le panneau dans une iframe où les liens « # » ne marchent pas.
 let CUR = "#/apercu";
 function go(h) {
@@ -557,7 +572,7 @@ function route() { const h = CUR.replace(/^#\/?/, "") || "apercu"; const [path, 
 function renderNav() {
   const { page } = route(), cur = page === "groupe" ? "decouvertes" : page;
   const todo = S.groups.filter(g => g.status === "nouveau").length;
-  const link = ([id, label, ic]) => `<a href="#/${id}" class="${cur === id ? "on" : ""}">${icon(ic)}<span>${label}</span>${id === "decouvertes" && todo ? `<span class="badge">${todo}</span>` : ""}</a>`;
+  const link = ([id, label, ic]) => `<a href="#/${id}" class="${cur === id ? "on" : ""}">${icon(ic)}<span>${tr(label)}</span>${id === "decouvertes" && todo ? `<span class="badge">${todo}</span>` : ""}</a>`;
   $("#nav").innerHTML = PAGES.map(link).join("");
   $("#tabbar").innerHTML = PAGES.map(link).join("");
   const st = S.status, days = st.first_sample ? Math.max(1, Math.round((Date.now() / 1000 - st.first_sample) / 86400)) : 0;
@@ -647,7 +662,7 @@ function pageApercu() {
   const todo = evs.filter(e => !e.gid || !G(e.gid) || !G(e.gid).name).length;
   let peak = 0; for (let i = 0; i < dd.limit; i++) { let s = 0; for (const k of dd.order) s += dd.layers.get(k)[i]; peak = Math.max(peak, s); }
   return `
-  <div class="page-h"><div><h1>Aperçu</h1><p class="sub">Ce que consomme la maison, appareil par appareil.</p></div>
+  <div class="page-h"><div><h1>${tr("overview")}</h1><p class="sub">Ce que consomme la maison, appareil par appareil.</p></div>
     <div class="daypick"><button class="icon-btn" id="dprev" ${S.day === 0 ? "disabled" : ""}>${icon("left")}</button><span class="lbl">${dayLabel(S.day)}</span><button class="icon-btn" id="dnext" ${today ? "disabled" : ""}>${icon("right")}</button></div></div>
   <div class="grid g-tiles">
     <div class="card tile"><div class="lbl">${today ? "Consommé depuis minuit" : "Consommé ce jour-là"}</div><div class="val">${nf1.format(dd.tot)}<small>kWh</small></div><div class="foot">${fmtEur(dd.tot)}</div></div>
@@ -709,7 +724,7 @@ function pageDecouvertes() {
   const by = (a, b) => gstats(b.id).n - gstats(a.id).n;
   const empty = !S.groups.length;
   return `
-  <div class="page-h"><div><h1>Découvertes</h1><p class="sub">Le programme regroupe tout seul les utilisations qui se ressemblent. Toi, tu dis juste ce que c'est.</p></div></div>
+  <div class="page-h"><div><h1>${tr("discoveries")}</h1><p class="sub">Le programme regroupe tout seul les utilisations qui se ressemblent. Toi, tu dis juste ce que c'est.</p></div></div>
   <div class="card"><div class="how">
     <div><span class="n">1</span><span><b>Il repère</b>chaque appareil qui s'allume (plus de 350 W d'un coup)</span></div>
     <div><span class="n">2</span><span><b>Il regroupe</b>par puissance, durée, forme de courbe et heure</span></div>
@@ -867,7 +882,7 @@ function pageHabitudes() {
     </div>`;
   };
   return `
-  <div class="page-h"><div><h1>Habitudes</h1><p class="sub">Ce qui revient souvent à la même heure, plusieurs jours de suite. Ça aide à deviner ce que c'est.</p></div></div>
+  <div class="page-h"><div><h1>${tr("habits")}</h1><p class="sub">Ce qui revient souvent à la même heure, plusieurs jours de suite. Ça aide à deviner ce que c'est.</p></div></div>
   <div class="card"><div class="card-h"><div><h2>Le rythme de la maison</h2><p>Nombre de gros appareils allumés selon l'heure, sur ${NDAYS} jour${NDAYS > 1 ? "s" : ""}</p></div></div>${rhythm}</div>
   ${todo.length ? `<div class="section-t"><h2>À identifier</h2><span>${todo.length}</span></div><div class="groups">${todo.map(card).join("")}</div>` : ""}
   ${known.length ? `<div class="section-t"><h2>Déjà reconnues</h2><span>${known.length}</span></div><div class="card"><div class="list">${known.map(hb => { const g = G(hb.gid); return `<div class="row click" data-go="#/groupe/${hb.gid}"><span class="dot" style="background:${col(g)}"></span><div class="grow"><div class="t1">${esc(g.name)} · ${periodOf(hb.hour)}, vers ${fmtH(hb.hour)}</div><div class="t2">${fmtW(hb.p)} · ${fmtDur(hb.dur)} · vu ${hb.days} jours sur ${hb.nDays}</div></div><span class="pill ok">${icon("check")}reconnu</span></div>`; }).join("")}</div></div>` : ""}
@@ -878,7 +893,7 @@ function pageHabitudes() {
 // ---------- Page : Carte des ressemblances
 function pageCarte() {
   return `
-  <div class="page-h"><div><h1>Carte des ressemblances</h1><p class="sub">Chaque point est une utilisation d'un appareil. Plus deux points sont proches, plus ils se ressemblent. Les zones sont les groupes trouvés par le programme.</p></div></div>
+  <div class="page-h"><div><h1>${tr("similarityMap")}</h1><p class="sub">Chaque point est une utilisation d'un appareil. Plus deux points sont proches, plus ils se ressemblent. Les zones sont les groupes trouvés par le programme.</p></div></div>
   <div class="card"><div class="card-h"><div><h2>Puissance et durée de chaque utilisation</h2><p>Clique sur un point pour ouvrir son groupe. Survole la légende pour isoler un groupe.</p></div></div>
     <div class="legend" id="sclegend" style="margin-bottom:10px"></div>
     <div class="chart" id="scatter"></div>
@@ -969,7 +984,7 @@ function catsBlock() {
   const cs = (S.status.categories || []);
   return `<div class="card-h" style="margin:0 0 10px"><div><h2>Catégories</h2><p>Des appareils comptés ensemble, comme tu veux (Électroménager, Cuisine…). Un appareil n'est que dans une seule catégorie.</p></div><button class="btn sm" id="b-cat-new">${icon("plus")} Nouvelle catégorie</button></div>
   <div class="groups" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr));margin-bottom:22px">${cs.map(catCard).join("")}</div>
-  <h2 style="margin:0 0 10px">Appareils</h2>`;
+  <h2 style="margin:0 0 10px">${tr("appliances")}</h2>`;
 }
 // ---------- Prises partagées (lave-linge + sèche-linge sur la même prise…)
 function sharedBlock() {
@@ -1007,9 +1022,9 @@ function bindShared() {
 
 function pageAppareils() {
   const gs = S.groups.filter(g => g.name || g.status === "valide").sort((a, b) => (a.status === "valide" ? 0 : 1) - (b.status === "valide" ? 0 : 1) || gstats(b.id).kwhWeek - gstats(a.id).kwhWeek);
-  if (!gs.length) return `<div class="page-h"><div><h1>Appareils</h1><p class="sub">Les appareils que tu as nommés apparaîtront ici.</p></div></div>${sharedBlock()}<div class="card empty">Aucun appareil nommé pour l'instant. Commence par les Découvertes.</div>`;
+  if (!gs.length) return `<div class="page-h"><div><h1>${tr("appliances")}</h1><p class="sub">Les appareils que tu as nommés apparaîtront ici.</p></div></div>${sharedBlock()}<div class="card empty">Aucun appareil nommé pour l'instant. Commence par les Découvertes.</div>`;
   return `
-  <div class="page-h"><div><h1>Appareils</h1><p class="sub">Les appareils que tu as nommés. Ceux qui sont validés ont leurs capteurs dans Home Assistant.</p></div></div>
+  <div class="page-h"><div><h1>${tr("appliances")}</h1><p class="sub">Les appareils que tu as nommés. Ceux qui sont validés ont leurs capteurs dans Home Assistant.</p></div></div>
   ${energyLogCard()}
   ${sharedBlock()}
   ${catsBlock()}
@@ -1056,7 +1071,7 @@ function pageRapport() {
   const splits = S.groups.filter(g => gstats(g.id).split);
   const baseW = base / hours * 1000;
   return `
-  <div class="page-h"><div><h1>Rapport de la semaine</h1><p class="sub">Du ${dfDay.format(dayStartMs(ds[0]))} au ${dfDay.format(dayStartMs(ds[ds.length - 1])).replace(/\.$/, "")}. Ce sont des hypothèses, pas des certitudes : à toi de confirmer.</p></div><button class="btn" id="b-print">${icon("report")} Imprimer</button></div>
+  <div class="page-h"><div><h1>${tr("weeklyReport")}</h1><p class="sub">Du ${dfDay.format(dayStartMs(ds[0]))} au ${dfDay.format(dayStartMs(ds[ds.length - 1])).replace(/\.$/, "")}. Ce sont des hypothèses, pas des certitudes : à toi de confirmer.</p></div><button class="btn" id="b-print">${icon("report")} Imprimer</button></div>
   <div class="grid g-tiles">
     <div class="card tile"><div class="lbl">Consommation</div><div class="val">${nf1.format(tot)}<small>kWh</small></div><div class="foot">${fmtEur(tot)} sur ${ds.length} jour${ds.length > 1 ? "s" : ""}</div></div>
     <div class="card tile"><div class="lbl">Attribuée à un appareil nommé</div><div class="val">${Math.round(named / tot * 100)}<small>%</small></div><div class="foot">${fmtKwh(named)}</div></div>
@@ -1178,6 +1193,7 @@ function introModal() {
 // ---------- Démarrage
 export function start(h) {
   hass = h;
+  setLanguage("fr");
   tip = $("#tip");
   try { theme = localStorage.getItem("empreinte-theme") || "auto"; } catch (e) { }
   ["#theme", "#theme2"].forEach(s => $(s).onclick = () => { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; try { localStorage.setItem("empreinte-theme", theme); } catch (e) { } applyTheme(); });

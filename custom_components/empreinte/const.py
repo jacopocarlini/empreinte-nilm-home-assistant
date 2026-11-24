@@ -3,6 +3,9 @@
 DOMAIN = "empreinte"
 VERSION = "1.3.0"
 CONF_POWER_ENTITY = "power_entity"        # la puissance de toute la maison (W) : le seul réglage obligatoire
+CONF_LANGUAGE = "language"
+LANGUAGES = ("fr", "en", "it")
+DEFAULT_LANGUAGE = "fr"
 # Réglages facultatifs (modifiables à tout moment : Paramètres → Appareils et services → Empreinte → Configurer)
 CONF_MEASURED = "measured"                # prises connectées qui mesurent déjà un appareil (retirées de l'analyse)
 CONF_CLIMATE = "climate_entity"           # la clim / pompe à chaleur (son thermostat)
