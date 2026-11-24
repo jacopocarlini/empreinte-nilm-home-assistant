@@ -1,7 +1,7 @@
 // Interface d'Empreinte : lit les données de l'intégration par la WebSocket de HA.
 "use strict";
 const { findHabits, habitHints, periodOf, HABIT } = await import(new URL("habits.js" + new URL(import.meta.url).search, import.meta.url).href);
-const { locale, translate, relativeTime } = await import(new URL("i18n.js" + new URL(import.meta.url).search, import.meta.url).href);
+const { locale, translate, relativeTime, applianceName, applianceNames, applianceSelection } = await import(new URL("i18n.js" + new URL(import.meta.url).search, import.meta.url).href);
 
 // ---------- Outils
 const $ = (s, r = document) => r.querySelector(s);
@@ -12,6 +12,7 @@ const quant = (a, q) => { if (!a.length) return 0; const s = [...a].sort((x, y) 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 let language = "fr";
 const tr = (key, values) => translate(language, key, values);
+const appliance = name => applianceName(language, name);
 let nf1, nf0, nf2, dfDay, dfLong;
 function setLanguage(lang) {
   language = ["fr", "en", "it"].includes(lang) ? lang : "fr";
@@ -95,6 +96,7 @@ const IC = {
   map: '<path d="M3 3v18h18"/><circle cx="8" cy="14" r="1.6"/><circle cx="12" cy="9" r="1.6"/><circle cx="16.5" cy="13" r="1.6"/><circle cx="18" cy="6" r="1.6"/>',
   zap: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
   report: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 18v-3M12 18v-6M16 18v-4"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
   oven: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M3 8.5h18"/><rect x="7" y="12" width="10" height="5.5" rx="1"/><path d="M7 5.8h.01M10.5 5.8h.01"/>',
   heater: '<path d="M4 20h16M6 20V8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12M9.5 9v8M12 9v8M14.5 9v8"/>',
   tank: '<rect x="6" y="2" width="12" height="20" rx="5"/><path d="M12 8.5c-1.6 2-2.2 3.1-2.2 4.2a2.2 2.2 0 0 0 4.4 0c0-1.1-.6-2.2-2.2-4.2z"/>',
@@ -135,7 +137,7 @@ const KIND_NOTES = new Set(["bouilloire", "micro_ondes", "four", "chauffage_sdb"
 // ---------- Groupes
 const G = id => S.groups.find(g => g.id === id);
 const col = g => g ? `var(--s${g.slot})` : "var(--unk)";
-const gname = g => g ? (g.name || tr("group") + " " + g.letter) : tr("unknown");
+const gname = g => g ? (g.name ? appliance(g.name) : tr("group") + " " + g.letter) : tr("unknown");
 const gicon = g => g ? (g.name ? iconFor(g.name) : "help") : "help";
 const hypLabel = g => g && !g.name && g.hyp ? S.kinds[g.hyp] : null;
 const members = gid => EVENTS.filter(e => (e.gid || null) === gid);
@@ -380,7 +382,10 @@ async function act(msg, okMsg) {
 }
 const moveEvents = (ids, target) => act({ action: "move", ids, target }, `${ids.length > 1 ? tr("moveUsesOther", { count: ids.length }) : tr("moveUsesOne")} ${target === "new" ? tr("moveNew") : target ? tr("moveTo", { name: gname(G(target)) }) : tr("moveUnknown")}`);
 const confirmEvents = ids => act({ action: "confirm", ids }, ids.length > 1 ? tr("confirmedOther", { count: ids.length }) : tr("confirmedOne"));
-const labelEvents = (ids, name) => act({ action: "label", ids, name: name.trim() }, tr("labelSaved", { name: name.trim() }));
+const labelEvents = (ids, name) => act({ action: "label", ids, name: name.trim() }, tr("labelSaved", { name: appliance(name.trim()) }));
+function applianceInput(container, initial = "") {
+  return applianceSelection($("#nm", container), $$("[data-s]", container), language, initial);
+}
 function labelModal(ids, now) {
   const names = [...new Set([...S.groups.filter(g => g.name).map(g => g.name), ...SUGG])];
   const evs = EVENTS.filter(e => (ids || []).includes(e.id));
@@ -391,24 +396,24 @@ function labelModal(ids, now) {
   const help = `<p class="sub" style="font-size:12.5px;margin-top:12px"><b>${tr("sure")}</b> : ${tr("labelHelpSure")} <b>${tr("maybeAction")}</b> : ${tr("labelHelpMaybe")}</p>`;
   openModal(`<h2>${tr(now ? "labelCurrent" : "labelQuestion")}</h2><p class="sub">${esc(intro)}</p>
     <input class="field" id="nm" maxlength="40" placeholder="${esc(tr("appliancePlaceholder"))}">
-    <div class="chips">${names.map(n => `<button class="chip" data-s="${esc(n)}">${icon(iconFor(n))}${esc(n)}</button>`).join("")}</div>
+    <div class="chips">${names.map(n => `<button class="chip" data-s="${esc(n)}">${icon(iconFor(n))}${esc(appliance(n))}</button>`).join("")}</div>
     <p class="sub" style="font-size:12.5px;margin-top:10px">${icon("plus")} ${tr("createApplianceHint")}</p>
     ${help}
     <div class="acts"><button class="btn ghost" data-close>${tr("cancel")}</button><button class="btn" id="maybe">${tr("maybeAction")}</button><button class="btn primary" id="ok">${icon("check")} ${tr("sure")}</button></div>`, (b, close) => {
-    const inp = $("#nm", b); inp.focus();
-    $$("[data-s]", b).forEach(c => c.onclick = () => { inp.value = c.dataset.s; inp.focus(); });
+    const inp = $("#nm", b), getName = applianceInput(b); inp.focus();
     const go_ = maybe => {
-      const name = inp.value.trim(); if (!name) return inp.focus(); close();
-      if (now && step && !maybe) act({ action: "label_now", name, at: step.at, p: step.p }, tr("trackingLabel", { name }));
-      else if (now) act({ action: "label_now", name, maybe, ...(step ? { at: step.at, p: step.p } : {}) }, tr(maybe ? "maybePending" : "labelPending", { name }));
-      else if (maybe) act({ action: "maybe", ids, name }, tr("maybeRecorded", { name }));
+      const name = getName(); if (!name) return inp.focus(); close();
+      const shown = appliance(name);
+      if (now && step && !maybe) act({ action: "label_now", name, at: step.at, p: step.p }, tr("trackingLabel", { name: shown }));
+      else if (now) act({ action: "label_now", name, maybe, ...(step ? { at: step.at, p: step.p } : {}) }, tr(maybe ? "maybePending" : "labelPending", { name: shown }));
+      else if (maybe) act({ action: "maybe", ids, name }, tr("maybeRecorded", { name: shown }));
       else labelEvents(ids, name);
     };
     $("#ok", b).onclick = () => go_(false); $("#maybe", b).onclick = () => go_(true);
     inp.onkeydown = e => { if (e.key === "Enter") go_(false); };
   });
 }
-const renameGroup = (gid, name) => act({ action: "rename", gid, name: name.trim() }, tr("groupNamed", { name: name.trim() }));
+const renameGroup = (gid, name) => act({ action: "rename", gid, name: name.trim() }, tr("groupNamed", { name: appliance(name.trim()) }));
 const mergeGroups = async (src, dst) => { const n = gname(G(src)), m = gname(G(dst)); await act({ action: "merge", src, dst }, tr("groupsMerged", { source: n, target: m })); go("#/groupe/" + dst); };
 const splitGroup = (gid, thr) => act({ action: "split", gid, thr }, tr("groupSplit"));
 // « C'est bon » : nomme si besoin, crée les capteurs et ajoute l'appareil au tableau Énergie.
@@ -462,7 +467,7 @@ function moveMenu(anchor, ids, exclude) {
   items.push({ label: tr("newGroupTitle"), icon: "plus", onClick: () => moveEvents(ids, "new") });
   openMenu(anchor, ids.length > 1 ? tr("moveMenuMany", { count: ids.length }) : tr("moveMenuOne"), items);
 }
-const SUGG = ["Douche (chauffe-eau)", "Four", "Micro-ondes", "Bouilloire", "Frigo", "Chauffage salle de bain", "Lave-linge", "Sèche-linge", "Lave-vaisselle", "Plaques de cuisson", "Aspirateur", "Fer à repasser", "Sèche-cheveux", "Grille-pain", "Cafetière", "Climatisation"];
+const SUGG = Object.keys(applianceNames);
 // « À telle heure, c'était… » : nommer une utilisation passée (hier, avant-hier…) en donnant son heure
 function atModal(ds) {
   const names = [...new Set([...S.groups.filter(g => g.name).map(g => g.name), ...SUGG])];
@@ -472,17 +477,16 @@ function atModal(ds) {
     <p class="sub">${esc(tr("labelAtDescription", { day: dayLabel(S.day) }))}</p>
     <input class="field" id="hh" type="time" value="${def}" style="margin-bottom:10px">
     <input class="field" id="nm" maxlength="40" placeholder="${esc(tr("appliancePlaceholderPast"))}">
-    <div class="chips">${names.map(n => `<button class="chip" data-s="${esc(n)}">${icon(iconFor(n))}${esc(n)}</button>`).join("")}</div>
+    <div class="chips">${names.map(n => `<button class="chip" data-s="${esc(n)}">${icon(iconFor(n))}${esc(appliance(n))}</button>`).join("")}</div>
     <p class="sub" style="font-size:12.5px;margin-top:10px">${icon("plus")} ${tr("createApplianceHint")}</p>
     <div class="acts"><button class="btn ghost" data-close>${tr("cancel")}</button><button class="btn" id="maybe">${tr("maybeAction")}</button><button class="btn primary" id="ok">${icon("check")} ${tr("sure")}</button></div>`, (b, close) => {
-    const inp = $("#nm", b), hh = $("#hh", b);
-    $$("[data-s]", b).forEach(c => c.onclick = () => { inp.value = c.dataset.s; inp.focus(); });
+    const inp = $("#nm", b), hh = $("#hh", b), getName = applianceInput(b);
     const go_ = maybe => {
-      const name = inp.value.trim(); if (!name) return inp.focus();
+      const name = getName(); if (!name) return inp.focus();
       const [h, m] = (hh.value || "12:00").split(":").map(Number);
       const t = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m).getTime() / 1000;
       close();
-      act({ action: "label_at", t, name, maybe }, tr(maybe ? "maybeAt" : "savedAt", { name, time: hh.value }));
+      act({ action: "label_at", t, name, maybe }, tr(maybe ? "maybeAt" : "savedAt", { name: appliance(name), time: hh.value }));
     };
     $("#ok", b).onclick = () => go_(false); $("#maybe", b).onclick = () => go_(true);
   });
@@ -498,15 +502,14 @@ function nameModal(title, value, done) {
 }
 function renameModal(gid) {
   const g = G(gid), st = gstats(gid), hyp = hypLabel(g);
-  openModal(`<h2>${tr("renameTitle")}</h2><p class="sub">${st.n} ${tr(st.n === 1 ? "usesOne" : "usesOther")} · ${tr("approximately")} ${fmtW(st.P)} · ${fmtDur(st.D)}${hyp ? ` · ${tr("guessedAppliance")} <b>${esc(hyp)}</b>` : ""}</p>
-    <input class="field" id="nm" maxlength="40" placeholder="${esc(tr("renamePlaceholder"))}" value="${esc(g.name || hyp || "")}">
-    <div class="chips">${SUGG.map(s => `<button class="chip" data-s="${esc(s)}">${icon(iconFor(s))}${esc(s)}</button>`).join("")}</div>
+  openModal(`<h2>${tr("renameTitle")}</h2><p class="sub">${st.n} ${tr(st.n === 1 ? "usesOne" : "usesOther")} · ${tr("approximately")} ${fmtW(st.P)} · ${fmtDur(st.D)}${hyp ? ` · ${tr("guessedAppliance")} <b>${esc(appliance(hyp))}</b>` : ""}</p>
+    <input class="field" id="nm" maxlength="40" placeholder="${esc(tr("renamePlaceholder"))}">
+    <div class="chips">${SUGG.map(s => `<button class="chip" data-s="${esc(s)}">${icon(iconFor(s))}${esc(appliance(s))}</button>`).join("")}</div>
     <p class="sub" style="font-size:12.5px;margin-top:10px">${icon("plus")} ${tr("createApplianceHint")}</p>
     ${g.status === "valide" ? `<p class="sub" style="font-size:12.5px;margin-top:14px">${tr("sensorIdsKept")}</p>` : ""}
     <div class="acts"><button class="btn ghost" data-close>${tr("cancel")}</button><button class="btn primary" id="ok">${tr("save")}</button></div>`, (b, close) => {
-    const inp = $("#nm", b); inp.focus(); inp.select();
-    $$("[data-s]", b).forEach(c => c.onclick = () => { inp.value = c.dataset.s; inp.focus(); });
-    const ok = () => { if (!inp.value.trim()) return inp.focus(); close(); renameGroup(gid, inp.value); };
+    const inp = $("#nm", b), getName = applianceInput(b, g.name || hyp || ""); inp.focus(); inp.select();
+    const ok = () => { const name = getName(); if (!name) return inp.focus(); close(); renameGroup(gid, name); };
     $("#ok", b).onclick = ok; inp.onkeydown = e => { if (e.key === "Enter") ok(); };
   });
 }
@@ -548,7 +551,7 @@ function validateModal(gid) {
 }
 
 // ---------- Navigation
-const PAGES = [["apercu", "overview", "home"], ["decouvertes", "discoveries", "spark"], ["habitudes", "habits", "clock"], ["carte", "map", "map"], ["appareils", "appliances", "zap"], ["rapport", "report", "report"]];
+const PAGES = [["apercu", "overview", "home"], ["decouvertes", "discoveries", "spark"], ["habitudes", "habits", "clock"], ["carte", "map", "map"], ["appareils", "appliances", "zap"], ["rapport", "report", "report"], ["parametres", "settings", "settings"]];
 // Navigation interne : HA affiche le panneau dans une iframe où les liens « # » ne marchent pas.
 let CUR = "#/apercu";
 function go(h) {
@@ -590,7 +593,7 @@ function durationModal(tid) {
   // programmes déjà vus : on propose le temps qu'il leur resterait maintenant
   const usual = (track.used || []).map(total => total - elapsed).filter(m => m > 0);
   const opts = [15, 30, 45, 60, 90, 120, 150, 180].filter(m => !usual.some(u => Math.abs(u - m) < 5));
-  openModal(`<h2>${tr("remainingQuestion")}</h2><p class="sub">${esc(tr("remainingDescription", { name: track.name }))}</p>
+  openModal(`<h2>${tr("remainingQuestion")}</h2><p class="sub">${esc(tr("remainingDescription", { name: appliance(track.name) }))}</p>
     ${usual.length ? `<p class="sub" style="font-size:12.5px;margin-top:12px">${tr("usualTimes")}</p><div class="chips" style="margin-top:6px">${usual.map(m => `<button class="chip" data-m="${m}">${icon("clock")} ${tr("another")} ${fmtDur(m * 60)}</button>`).join("")}</div><p class="sub" style="font-size:12.5px;margin-top:10px">${tr("otherTime")}</p>` : ""}
     <div class="chips">${opts.map(m => `<button class="chip" data-m="${m}">${tr("another")} ${fmtDur(m * 60)}</button>`).join("")}</div>
     <div style="display:flex;align-items:center;gap:8px;margin-top:12px">${tr("another")} <input class="field" id="hh" type="number" min="0" max="23" placeholder="h" style="width:80px;margin:0"> h <input class="field" id="mm" type="number" min="0" max="59" placeholder="min" style="width:90px;margin:0"> min</div>
@@ -610,8 +613,8 @@ function journalCard(dd, evs, today) {
   const act_ = (label, attrs, primary) => `<button class="btn sm ${primary ? "primary" : ""}" ${attrs}>${label}</button>`;
   const liveRow = x => {
     const when = x.end ? `${fmtHM(x.start * 1000)} – ${fmtHM(x.end * 1000)}` : `${tr("since")} ${fmtHM(x.start * 1000)}`;
-    const right = x.pending ? `<span class="pill ok">${icon("check")}${esc(x.pending.name)}</span><button class="icon-btn" data-cancel="${x.pending.t}" title="${esc(tr("removeLabel"))}">${icon("x")}</button>`
-      : (x.hint ? act_(`${icon("check")} ${esc(x.hint)} ?`, `data-quick-live="${x.start},${x.p}" data-name="${esc(x.hint)}"`, true) : "") + act_(tr("identify"), `data-live="${x.start},${x.p}"`);
+    const right = x.pending ? `<span class="pill ok">${icon("check")}${x.pending.maybe ? `${tr("maybe")} ` : ""}${esc(appliance(x.pending.raw_name ?? x.pending.name))}</span><button class="icon-btn" data-cancel="${x.pending.t}" title="${esc(tr("removeLabel"))}">${icon("x")}</button>`
+      : (x.hint ? act_(`${icon("check")} ${esc(appliance(x.hint))} ?`, `data-quick-live="${x.start},${x.p}" data-name="${esc(x.hint)}"`, true) : "") + act_(tr("identify"), `data-live="${x.start},${x.p}"`);
     return `<div class="row"><span class="dot-live" style="${x.end ? "background:var(--muted);box-shadow:none" : ""}"></span><div class="grow"><div class="t1">${tr(x.end ? "justRan" : "running")} · ${tr("approximately")} ${fmtW(x.p)}</div><div class="t2">${when}${x.n > 1 ? ` · ${tr("cyclesOnOff")}` : ""}${x.end ? ` · ${tr("filedWhenOff")}` : ""}</div></div>${right}</div>`;
   };
   const trackRow = track => {
@@ -620,22 +623,22 @@ function journalCard(dd, evs, today) {
     const state = track.on ? `${tr("heatingNow")} · ${tr("approximately")} ${fmtW(track.p)}` : `${tr("notHeatingSince")} ${pause} min ${tr("mayResume")}`;
     const left = track.planned_end ? Math.round((track.planned_end - Date.now() / 1000) / 60) : null;
     const chrono = track.planned_end ? `<div class="t2">${icon("clock")} ${tr("expectedEnd")} <b>${fmtHM(track.planned_end * 1000)}</b>${left > 0 ? ` · ${tr("remaining")} ${fmtDur(left * 60)}` : ` · ${tr("waitingForStop")}`}</div>` : "";
-    return `<div class="row"><span class="dot-live" style="${track.on ? "" : "background:var(--warn);box-shadow:none"}"></span><div class="grow"><div class="t1">${esc(track.name)} · ${tr("trackedSince")} ${fmtHM(track.at * 1000)}</div><div class="t2">${state} · ${fmtDur(track.on_s)} ${tr("onInTotal")}${track.user ? "" : ` · ${tr("recognisedAutomatically")}`}</div>${chrono}</div><button class="btn sm ghost" data-tdur="${track.id}" data-min="${track.minutes || ""}" title="${esc(tr("programmeTimeLeft"))}">${icon("clock")} ${tr("timeLeft")}</button><button class="btn sm" data-tstop="${track.id}">${icon("check")} ${tr("finished")}</button><button class="icon-btn" data-tcancel="${track.id}" title="${esc(tr("cancelTracking"))}">${icon("x")}</button></div>`;
+    return `<div class="row"><span class="dot-live" style="${track.on ? "" : "background:var(--warn);box-shadow:none"}"></span><div class="grow"><div class="t1">${esc(appliance(track.name))} · ${tr("trackedSince")} ${fmtHM(track.at * 1000)}</div><div class="t2">${state} · ${fmtDur(track.on_s)} ${tr("onInTotal")}${track.user ? "" : ` · ${tr("recognisedAutomatically")}`}</div>${chrono}</div><button class="btn sm ghost" data-tdur="${track.id}" data-min="${track.minutes || ""}" title="${esc(tr("programmeTimeLeft"))}">${icon("clock")} ${tr("timeLeft")}</button><button class="btn sm" data-tstop="${track.id}">${icon("check")} ${tr("finished")}</button><button class="icon-btn" data-tcancel="${track.id}" title="${esc(tr("cancelTracking"))}">${icon("x")}</button></div>`;
   };
   const doneRow = e => {
     const g = G(e.gid), hyp = hypLabel(g);
     // morceau provisoire d'un appareil encore suivi : il sera remplacé à la fin du suivi, rien à faire
     // (le programme vérifie qu'elle tombe bien sur les moments où l'appareil suivi chauffe)
-    if (e.tracked_by) return `<div class="row"><span class="num muted" style="width:42px">${fmtHM(e.start)}</span><span class="dot" style="background:var(--muted)"></span><div class="grow"><div class="t1">${esc(e.tracked_by)} · ${tr("trackingInProgress")}</div><div class="t2">${fmtW(e.p)} · ${tr("filedAutomatically")}</div></div></div>`;
+    if (e.tracked_by) return `<div class="row"><span class="num muted" style="width:42px">${fmtHM(e.start)}</span><span class="dot" style="background:var(--muted)"></span><div class="grow"><div class="t1">${esc(appliance(e.tracked_by))} · ${tr("trackingInProgress")}</div><div class="t2">${fmtW(e.p)} · ${tr("filedAutomatically")}</div></div></div>`;
     const right = g && g.name ? `${g.status === "valide" ? `<span class="pill ok">${icon("sensor")}${tr("sensor")}</span>` : ""}${act_(tr("change"), `data-label="${e.id}"`)}`
-      : ((e.guess && e.guess.length ? e.guess : hyp ? [hyp] : []).map((n, i) => act_(`${icon("check")} ${esc(n)} ?`, `data-quick="${e.id}" data-name="${esc(n)}"`, i === 0)).join("")) + act_(tr("identify"), `data-label="${e.id}"`);
-    return `<div class="row click" data-go="#/groupe/${e.gid || "aucun"}?e=${e.id}"><span class="num muted" style="width:42px">${fmtHM(e.start)}</span><span class="dot" style="background:${col(g)}"></span><div class="grow"><div class="t1">${g && g.name ? esc(g.name) : tr("notYetRecognised")}</div><div class="t2">${fmtW(e.p)} · ${fmtDur(e.dur)}${e.cut ? ` · ${tr("powerCut")}` : ""}${e.hint ? ` · ${tr("maybe")} : ${esc(e.hint)} <button class="icon-btn" style="width:24px;height:24px;display:inline-grid;vertical-align:middle" data-unhint="${e.id}" title="${esc(tr("removeMaybe"))}">${icon("x")}</button>` : ""}</div></div>${right}</div>`;
+      : ((e.guess && e.guess.length ? e.guess : hyp ? [hyp] : []).map((n, i) => act_(`${icon("check")} ${esc(appliance(n))} ?`, `data-quick="${e.id}" data-name="${esc(n)}"`, i === 0)).join("")) + act_(tr("identify"), `data-label="${e.id}"`);
+    return `<div class="row click" data-go="#/groupe/${e.gid || "aucun"}?e=${e.id}"><span class="num muted" style="width:42px">${fmtHM(e.start)}</span><span class="dot" style="background:${col(g)}"></span><div class="grow"><div class="t1">${g && g.name ? esc(gname(g)) : tr("notYetRecognised")}</div><div class="t2">${fmtW(e.p)} · ${fmtDur(e.dur)}${e.cut ? ` · ${tr("powerCut")}` : ""}${e.hint ? ` · ${tr("maybe")} : ${esc(appliance(e.hint))} <button class="icon-btn" style="width:24px;height:24px;display:inline-grid;vertical-align:middle" data-unhint="${e.id}" title="${esc(tr("removeMaybe"))}">${icon("x")}</button>` : ""}</div></div>${right}</div>`;
   };
   return `<div class="card" style="margin-top:16px"><div class="card-h"><div><h2>${tr("journal")}</h2><p>${tr(today ? "journalToday" : "journalDay")}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${today ? `<button class="btn sm ghost" id="b-now">${icon("edit")} ${tr("somethingElse")}</button>` : ""}<button class="btn sm ghost" id="b-at">${icon("clock")} ${tr(today ? "earlierToday" : "nameAtTime")}</button></div></div>
     ${tracks.length ? `<div class="list">${tracks.map(trackRow).join("")}</div>` : ""}
     ${parts.length ? `<div class="list">${parts.map(liveRow).join("")}</div>` : ""}
     ${meas.length ? `<p class="sub" style="font-size:12.5px;margin:6px 0">${meas.map(m => `${esc(m.name)} : ${fmtW(m.power)}`).join(" · ")} : ${tr("plugMeasured")}.</p>` : ""}
-    ${loose.length ? `<div class="changes" style="margin:6px 0">${loose.map(p => `<div>${icon("spark")}<span><b>${p.maybe ? `${tr("maybe")} ` : ""}${esc(p.name)}</b> (${tr("saidAt")} ${fmtHM(p.t * 1000)}) : ${tr("filedAtEnd")}.</span><button class="icon-btn" data-cancel="${p.t}" title="${esc(tr("removeLabel"))}">${icon("x")}</button></div>`).join("")}</div>` : ""}
+    ${loose.length ? `<div class="changes" style="margin:6px 0">${loose.map(p => `<div>${icon("spark")}<span><b>${p.maybe ? `${tr("maybe")} ` : ""}${esc(appliance(p.name))}</b> (${tr("saidAt")} ${fmtHM(p.t * 1000)}) : ${tr("filedAtEnd")}.</span><button class="icon-btn" data-cancel="${p.t}" title="${esc(tr("removeLabel"))}">${icon("x")}</button></div>`).join("")}</div>` : ""}
     ${parts.length && evs.length ? `<div style="height:1px;background:var(--border);margin:8px 0"></div>` : ""}
     <div class="list">${evs.length ? evs.map(doneRow).join("") : (parts.length ? "" : `<div class="empty">${tr("nothingLarge")}</div>`)}</div>
   </div>`;
@@ -681,7 +684,7 @@ function mountApercu() {
   if ($("#b-at")) $("#b-at").onclick = () => atModal(dayData(S.day).ds);
   $("#b-grp").onclick = () => { S.grp = !S.grp; try { localStorage.setItem("empreinte-grp", S.grp ? "1" : "0"); } catch (e) { } render(); };
   $$("[data-live]").forEach(b => b.onclick = () => { const [at, p] = b.dataset.live.split(",").map(Number); labelModal(null, { at, p }); });
-  $$("[data-quick-live]").forEach(b => b.onclick = () => { const [at, p] = b.dataset.quickLive.split(",").map(Number); act({ action: "label_now", name: b.dataset.name, at, p }, tr("trackingLabel", { name: b.dataset.name })); });
+  $$("[data-quick-live]").forEach(b => b.onclick = () => { const [at, p] = b.dataset.quickLive.split(",").map(Number); act({ action: "label_now", name: b.dataset.name, at, p }, tr("trackingLabel", { name: appliance(b.dataset.name) })); });
   $$("[data-quick]").forEach(b => b.onclick = () => labelEvents([b.dataset.quick], b.dataset.name));
   $$("[data-cancel]").forEach(b => b.onclick = () => act({ action: "cancel_pending", t: Number(b.dataset.cancel) }, tr("labelRemoved")));
   $$("[data-tdur]").forEach(b => b.onclick = () => durationModal(b.dataset.tdur));
@@ -699,7 +702,7 @@ function gcard(g) {
   const pill = g.status === "valide" ? `<span class="pill ok">${icon("sensor")}${tr("sensorActive")}</span>` : g.status === "nomme" ? (g.auto ? `<span class="pill new">${tr("automaticallyNamed")}</span>` : `<span class="pill">${tr("learning")}</span>`) : `<span class="pill new">${tr("newGroup")}</span>`;
   const aty = st.m.filter(isAty).length;
   return `<div class="card gcard" data-go="#/groupe/${g.id}">
-    <div class="gtitle"><div class="gicon" style="background:${col(g)}">${icon(gicon(g))}</div><div style="min-width:0;flex:1"><div class="nm">${esc(gname(g))}</div><div class="hy">${hyp ? `${tr("resembles")} : <b style="color:var(--ink)">${esc(hyp)}</b> · ${Math.round((g.hyp_score || 0) * 100)} %` : g.name ? `${tr("group")} ${esc(g.letter)}` : tr("noIdea")}</div></div>${pill}</div>
+    <div class="gtitle"><div class="gicon" style="background:${col(g)}">${icon(gicon(g))}</div><div style="min-width:0;flex:1"><div class="nm">${esc(gname(g))}</div><div class="hy">${hyp ? `${tr("resembles")} : <b style="color:var(--ink)">${esc(appliance(hyp))}</b> · ${Math.round((g.hyp_score || 0) * 100)} %` : g.name ? `${tr("group")} ${esc(g.letter)}` : tr("noIdea")}</div></div>${pill}</div>
     <div class="chart mini" data-ov="${g.id}"></div>
     <div class="gstats"><span><b>${fmtW(st.P)}</b>${tr("power")}</span><span><b>${fmtDur(st.D)}</b>${tr("duration")}</span><span><b>${st.n}</b>${tr("times")}</span><span><b>${fmtKwh(st.kwhWeek)}</b>${tr("lastSevenDays")}</span></div>
     ${hoursStrip(st.hours, col(g))}
@@ -746,15 +749,15 @@ function pageGroupe(gid) {
   </div>
   <div class="stack" style="margin-top:18px">
     ${hyp ? `<div class="hyp"><div class="q"><b>${esc(tr("hypothesisTitle", { name: hyp }))}</b> <span class="muted">(${Math.round((g.hyp_score || 0) * 100)} %)</span><ul>${hypReasons(g, st).map(r => `<li>${esc(r)}</li>`).join("")}</ul></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="b-yes">${icon("check")} ${tr("yesCorrect")}</button><button class="btn" id="b-no">${tr("noInstead")}</button></div></div>` : ""}
-    ${g && g.auto && g.status === "nomme" ? `<div class="hyp"><div class="q"><b>${esc(tr("autoNamedTitle", { name: g.name }))}</b><ul>${hypReasons({ ...g, hyp: g.hyp }, st).map(r => `<li>${esc(r)}</li>`).join("")}</ul></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="b-ok">${icon("check")} ${tr("looksGood")}</button><button class="btn" id="b-no">${tr("noInstead")}</button></div></div>` : ""}
+    ${g && g.auto && g.status === "nomme" ? `<div class="hyp"><div class="q"><b>${esc(tr("autoNamedTitle", { name: gname(g) }))}</b><ul>${hypReasons({ ...g, hyp: g.hyp }, st).map(r => `<li>${esc(r)}</li>`).join("")}</ul></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="b-ok">${icon("check")} ${tr("looksGood")}</button><button class="btn" id="b-no">${tr("noInstead")}</button></div></div>` : ""}
     ${g && st.split ? `<div class="banner">${icon("split")}<div class="grow"><b>${tr("twoPowerLevels")}</b> : ${esc(tr("powerLevelsDescription", { highCount: st.split.highN, highPower: fmtW(st.split.highP), lowCount: st.split.lowN, lowPower: fmtW(st.split.lowP) }))}</div><button class="btn sm" id="b-spl2">${tr("split")}</button></div>` : ""}
-    ${aty ? `<div class="banner">${icon("alert")}<div class="grow"><b>${esc(tr("unusualUses", { count: aty, uses: tr(aty === 1 ? "usesOne" : "usesOther") }))}</b> ${esc(tr("unusualDescription", { name: g.name || tr("thisAppliance") }))}</div></div>` : ""}
+    ${aty ? `<div class="banner">${icon("alert")}<div class="grow"><b>${esc(tr("unusualUses", { count: aty, uses: tr(aty === 1 ? "usesOne" : "usesOther") }))}</b> ${esc(tr("unusualDescription", { name: g.name ? gname(g) : tr("thisAppliance") }))}</div></div>` : ""}
     ${proofBlock(g)}
     <div class="card"><div class="card-h"><div><h2>${tr("overlayTitle")}</h2><p>${tr("overlayDescription")}</p></div></div><div class="chart" id="ov"></div></div>
     ${g ? `<div class="feat"><div><span>${tr("typicalPower")}</span><b>${fmtW(st.P)}</b></div><div><span>${tr("typicalDuration")}</span><b>${fmtDur(st.D)}</b></div><div><span>${tr("energyPerUse")}</span><b>${fmtKwh(st.WH / 1000)}</b></div><div><span>${tr("shape")}</span><b>${st.shape}</b></div><div><span>${tr("costSevenDays")}</span><b>${fmtEur(st.kwhWeek)}</b></div></div>
     <div class="card"><div class="card-h"><div><h2>${tr("whatTime")}</h2><p>${tr("usesPerHour")}</p></div></div>${hourBars(st.hours, col(g))}</div>` : ""}
     <div class="card occ"><div class="card-h"><div><h2>${tr("usesTitle")}</h2><p>${tr(g ? "leastSimilarFirst" : "assignOrCreate")}</p></div>${evs.length ? `<button class="btn sm ghost" id="b-all">${tr("selectAll")}</button>` : ""}</div>
-      <div class="list">${evs.map(e => { const s = e.sim; return `<div class="row" data-row="${e.id}"><input type="checkbox" data-sel="${e.id}" ${S.sel.has(e.id) ? "checked" : ""} aria-label="${esc(tr("select"))}">${spark(e, isAty(e) ? "var(--muted)" : col(g))}<div class="grow"><div class="t1">${fmtWhen(e.start)}</div><div class="t2">${isAty(e) ? `<span class="atyp">${icon("alert")}${tr("differsFromOthers")}</span>` : fmtKwh(e.wh / 1000)}${e.probable ? ` · <span class="muted" title="${esc(tr("probableHelp"))}">${tr("probable")}</span>` : ""}${e.hint ? ` · <span class="muted">${tr("maybe")} : ${esc(e.hint)}</span><button class="icon-btn" style="width:24px;height:24px;display:inline-grid;vertical-align:middle" data-unhint="${e.id}" title="${esc(tr("removeMaybe"))}">${icon("x")}</button>` : ""}${e.split ? ` · <span title="${esc(tr("splitFromOtherHelp"))}">${tr("splitFromOther")}</span>` : ""}<span class="monly"> · ${fmtW(e.p)} · ${fmtDur(e.dur)}${s != null ? ` · ${Math.round(s * 100)} %` : ""}</span></div></div><div class="meta num"><span>${fmtW(e.p)}</span><span class="d">${fmtDur(e.dur)}</span></div>${s != null ? `<div class="simbar" title="${esc(tr("similarity"))}"><i><b style="width:${Math.round(s * 100)}%"></b></i><span class="num">${Math.round(s * 100)}%</span></div>` : ""}${g ? (e.doubt ? `<button class="btn sm" data-doubt="${e.id}" title="${esc(tr("removeDoubt"))}">${icon("help")} ${tr("unsure")}</button>` : e.pinned ? `<span class="pill ok">${icon("check")}${tr("confirmed")}</span>` : `<button class="btn sm" data-yes1="${e.id}">${icon("check")} ${tr("yes")}</button><button class="btn sm ghost" data-doubt="${e.id}">${tr("unsure")}</button>`) : `<button class="btn sm" data-label="${e.id}">${tr("identify")}</button>`}<button class="btn sm" data-move="${e.id}">${tr(g ? "notThis" : "assign")}</button></div>`; }).join("") || `<div class="empty">${tr("noUsesPeriod")}</div>`}</div>
+      <div class="list">${evs.map(e => { const s = e.sim; return `<div class="row" data-row="${e.id}"><input type="checkbox" data-sel="${e.id}" ${S.sel.has(e.id) ? "checked" : ""} aria-label="${esc(tr("select"))}">${spark(e, isAty(e) ? "var(--muted)" : col(g))}<div class="grow"><div class="t1">${fmtWhen(e.start)}</div><div class="t2">${isAty(e) ? `<span class="atyp">${icon("alert")}${tr("differsFromOthers")}</span>` : fmtKwh(e.wh / 1000)}${e.probable ? ` · <span class="muted" title="${esc(tr("probableHelp"))}">${tr("probable")}</span>` : ""}${e.hint ? ` · <span class="muted">${tr("maybe")} : ${esc(appliance(e.hint))}</span><button class="icon-btn" style="width:24px;height:24px;display:inline-grid;vertical-align:middle" data-unhint="${e.id}" title="${esc(tr("removeMaybe"))}">${icon("x")}</button>` : ""}${e.split ? ` · <span title="${esc(tr("splitFromOtherHelp"))}">${tr("splitFromOther")}</span>` : ""}<span class="monly"> · ${fmtW(e.p)} · ${fmtDur(e.dur)}${s != null ? ` · ${Math.round(s * 100)} %` : ""}</span></div></div><div class="meta num"><span>${fmtW(e.p)}</span><span class="d">${fmtDur(e.dur)}</span></div>${s != null ? `<div class="simbar" title="${esc(tr("similarity"))}"><i><b style="width:${Math.round(s * 100)}%"></b></i><span class="num">${Math.round(s * 100)}%</span></div>` : ""}${g ? (e.doubt ? `<button class="btn sm" data-doubt="${e.id}" title="${esc(tr("removeDoubt"))}">${icon("help")} ${tr("unsure")}</button>` : e.pinned ? `<span class="pill ok">${icon("check")}${tr("confirmed")}</span>` : `<button class="btn sm" data-yes1="${e.id}">${icon("check")} ${tr("yes")}</button><button class="btn sm ghost" data-doubt="${e.id}">${tr("unsure")}</button>`) : `<button class="btn sm" data-label="${e.id}">${tr("identify")}</button>`}<button class="btn sm" data-move="${e.id}">${tr(g ? "notThis" : "assign")}</button></div>`; }).join("") || `<div class="empty">${tr("noUsesPeriod")}</div>`}</div>
       ${g && g.status !== "nouveau" ? `<div style="margin-top:12px;display:flex;justify-content:flex-end"><button class="btn sm ghost" id="b-del">${icon("trash")} ${tr("deleteGroup")}</button></div>` : ""}
     </div>
   </div>
@@ -786,7 +789,7 @@ function proofBlock(g) {
     line(p.coherence >= SURE.coherence, esc(tr("proofCoherence", { percent: Math.round(p.coherence * 100) }))),
     ...Object.entries(p.votes || {}).map(([n, k]) => line(k >= 3, esc(tr("proofVote", { name: n, count: k, total: p.n })))),
   ].join("");
-  const gl = (p.guesses || []).map(([l, v]) => `${esc(l)} <b>${Math.round(v * 100)} %</b>`).join(" · ");
+  const gl = (p.guesses || []).map(([l, v]) => `${esc(appliance(l))} <b>${Math.round(v * 100)} %</b>`).join(" · ");
   const miss = [];
   if (p.n < SURE.n) miss.push(tr("missingSeen", { count: SURE.n - p.n }));
   if (p.days < SURE.days) miss.push(tr("missingDays", { count: SURE.days - p.days }));
@@ -863,10 +866,10 @@ function pageHabitudes() {
     return `<div class="card hcard">
       <div class="gtitle"><div class="gicon" style="background:${g ? col(g) : "var(--s0)"}">${icon(g ? gicon(g) : "clock")}</div><div style="flex:1;min-width:0"><div class="q">${esc(tr("aroundTime", { period: cap(periodOf(hb.hour, language)), time: fmtH(hb.hour) }))}</div><div class="muted" style="font-size:12.5px">${esc(tr("betweenTimes", { from: fmtH(hb.from), to: fmtH(hb.to) }))}</div></div></div>
       <div style="font-size:13.5px">${esc(tr("habitAppliance", { power: fmtW(hb.p), duration: fmtDur(hb.dur) }))}</div>
-      ${(() => { const v = {}; EVENTS.filter(e => hb.ids.includes(e.id) && e.hint).forEach(e => v[e.hint] = (v[e.hint] || 0) + 1); const t = Object.entries(v).sort((a, b) => b[1] - a[1])[0]; return t ? `<div style="font-size:13px">${esc(tr("habitHintVotes", { name: t[0], count: t[1] }))}</div>` : ""; })()}
+      ${(() => { const v = {}; EVENTS.filter(e => hb.ids.includes(e.id) && e.hint).forEach(e => v[e.hint] = (v[e.hint] || 0) + 1); const t = Object.entries(v).sort((a, b) => b[1] - a[1])[0]; return t ? `<div style="font-size:13px">${esc(tr("habitHintVotes", { name: appliance(t[0]), count: t[1] }))}</div>` : ""; })()}
       <div style="font-size:13px;color:var(--ink-2)">${esc(tr("habitSeen", { days: hb.days, total: hb.nDays, weekdays: hb.weekdays, weekend: hb.weekend }))}</div>
       ${strip}
-      <div class="banner">${icon(g && g.name ? "check" : "help")}<div class="grow">${esc(g && g.name ? tr("habitKnown", { name: g.name }) : hints.length ? tr("habitPossible", { hints: hints.join(", ") }) : tr("habitUnknown"))}</div></div>
+      <div class="banner">${icon(g && g.name ? "check" : "help")}<div class="grow">${esc(g && g.name ? tr("habitKnown", { name: gname(g) }) : hints.length ? tr("habitPossible", { hints: hints.join(", ") }) : tr("habitUnknown"))}</div></div>
       <div class="acts"><button class="btn sm primary" data-hlabel="${hb.ids.join(",")}">${tr("identify")}</button><button class="btn sm" data-go="#/groupe/${hb.gid || "aucun"}?e=${hb.ids[0]}">${tr("viewUses")}</button></div>
     </div>`;
   };
@@ -874,7 +877,7 @@ function pageHabitudes() {
   <div class="page-h"><div><h1>${tr("habits")}</h1><p class="sub">${tr("habitsDescription")}</p></div></div>
   <div class="card"><div class="card-h"><div><h2>${tr("homeRhythm")}</h2><p>${esc(tr("rhythmDescription", { days: NDAYS, unit: tr(NDAYS === 1 ? "dayUnitOne" : "dayUnitOther") }))}</p></div></div>${rhythm}</div>
   ${todo.length ? `<div class="section-t"><h2>${tr("toIdentify")}</h2><span>${todo.length}</span></div><div class="groups">${todo.map(card).join("")}</div>` : ""}
-  ${known.length ? `<div class="section-t"><h2>${tr("alreadyRecognised")}</h2><span>${known.length}</span></div><div class="card"><div class="list">${known.map(hb => { const g = G(hb.gid); return `<div class="row click" data-go="#/groupe/${hb.gid}"><span class="dot" style="background:${col(g)}"></span><div class="grow"><div class="t1">${esc(g.name)} · ${esc(tr("aroundTime", { period: periodOf(hb.hour, language), time: fmtH(hb.hour) }))}</div><div class="t2">${fmtW(hb.p)} · ${fmtDur(hb.dur)} · ${esc(tr("habitSeenShort", { days: hb.days, total: hb.nDays }))}</div></div><span class="pill ok">${icon("check")}${tr("recognised")}</span></div>`; }).join("")}</div></div>` : ""}
+  ${known.length ? `<div class="section-t"><h2>${tr("alreadyRecognised")}</h2><span>${known.length}</span></div><div class="card"><div class="list">${known.map(hb => { const g = G(hb.gid); return `<div class="row click" data-go="#/groupe/${hb.gid}"><span class="dot" style="background:${col(g)}"></span><div class="grow"><div class="t1">${esc(gname(g))} · ${esc(tr("aroundTime", { period: periodOf(hb.hour, language), time: fmtH(hb.hour) }))}</div><div class="t2">${fmtW(hb.p)} · ${fmtDur(hb.dur)} · ${esc(tr("habitSeenShort", { days: hb.days, total: hb.nDays }))}</div></div><span class="pill ok">${icon("check")}${tr("recognised")}</span></div>`; }).join("")}</div></div>` : ""}
   ${hs.length ? ""
     : `<div class="card" style="margin-top:16px"><h2>${tr("noHabits")}</h2><p class="sub">${esc(tr("noHabitsDescription", { minimum: HABIT.MIN_DAYS, days: NDAYS, unit: tr(NDAYS === 1 ? "dayUnitOne" : "dayUnitOther") }))}</p></div>`}`;
 }
@@ -964,7 +967,7 @@ function energyLogCard() {
     const btn = x.removed ? `<span class="pill">${x.auto ? "retiré tout seul (corrigé)" : "retiré"}</span><button class="btn sm ghost" data-eredo="${x.id}">Remettre</button>`
       : now - x.t < 600 ? `<span class="muted" style="font-size:12px">retirable dans ${Math.ceil((600 - (now - x.t)) / 60)} min</span>`
       : `<button class="btn sm" data-eundo="${x.id}">${icon("x")} Retirer</button>`;
-    return `<div class="row"><span class="num muted" style="width:92px">${fmtWhen(x.t * 1000)}</span><div class="grow"><div class="t1" style="${x.removed ? "text-decoration:line-through;opacity:.6" : ""}">${esc(x.name)} · ${fmtKwh(x.kwh)}</div><div class="t2">${use}${x.entity ? "" : " · capteur introuvable"}</div></div>${btn}</div>`;
+    return `<div class="row"><span class="num muted" style="width:92px">${fmtWhen(x.t * 1000)}</span><div class="grow"><div class="t1" style="${x.removed ? "text-decoration:line-through;opacity:.6" : ""}">${esc(appliance(x.name))} · ${fmtKwh(x.kwh)}</div><div class="t2">${use}${x.entity ? "" : " · capteur introuvable"}</div></div>${btn}</div>`;
   };
   return `<div class="card" style="margin-bottom:22px"><div class="card-h"><div><h2>Envoyé au tableau Énergie</h2><p>Chaque utilisation comptée dans le tableau Énergie, au moment où elle l'a été. Quand tu corriges une utilisation (« C'est… », « Changer »), elle est retirée toute seule du tableau Énergie, puis comptée dans le bon appareil s'il y est. « Retirer » sert si tu veux l'enlever sans la corriger.</p></div></div>
     <div class="list">${show.length ? show.map(row).join("") : `<div class="empty">Rien d'envoyé cette semaine.</div>`}</div></div>`;
@@ -982,22 +985,22 @@ function sharedBlock() {
   return plugs.map(pl => {
     const names = pl.apps.map(a => a.name);
     const o = pl.open;
-    const now = o ? `<div class="banner">${icon("clock")}<div class="grow">${esc(tr("sharedRunningSince", { time: fmtHM(o.start * 1000), power: fmtW(o.power) }))} · ${esc(o.guess ? tr("sharedProbably", { name: o.guess }) : tr("sharedTooSoon"))}</div></div>` : "";
+    const now = o ? `<div class="banner">${icon("clock")}<div class="grow">${esc(tr("sharedRunningSince", { time: fmtHM(o.start * 1000), power: fmtW(o.power) }))} · ${esc(o.guess ? tr("sharedProbably", { name: appliance(o.guess) }) : tr("sharedTooSoon"))}</div></div>` : "";
     const apps = pl.apps.map(a => `<div class="card" style="padding:12px;box-shadow:none">
-        <div class="dev-h"><div class="gicon" style="background:var(--good)">${icon(iconFor(a.name))}</div><div class="grow"><div style="font-weight:600">${esc(a.name)}${a.running ? ` <span class="pill ok">${tr("running")}</span>` : ""}</div><div class="muted" style="font-size:12.5px">${tr("sharedProgrammeCount", { count: a.n })}</div></div></div>
+        <div class="dev-h"><div class="gicon" style="background:var(--good)">${icon(iconFor(a.name))}</div><div class="grow"><div style="font-weight:600">${esc(appliance(a.name))}${a.running ? ` <span class="pill ok">${tr("running")}</span>` : ""}</div><div class="muted" style="font-size:12.5px">${tr("sharedProgrammeCount", { count: a.n })}</div></div></div>
         <div class="kv" style="margin-top:10px"><div><span>${tr("sevenDays")}</span><b>${fmtKwh(a.kwh7)}</b></div><div><span>${tr("cost")}</span><b>${fmtEur(a.kwh7)}</b></div><div><span>${tr("sinceStart")}</span><b>${fmtKwh(a.kwh)}</b></div></div>
         <div class="ent" style="margin-top:10px">${(a.entities || []).map(id => `<div><b>${esc(id)}</b><span>${esc(stateOf(id))}</span></div>`).join("") || `<div>${tr("sensorsCreating")}</div>`}</div>
         <div style="margin-top:10px">${a.dash ? `<button class="btn sm" data-sh-dash="${esc(a.key)}" data-on="0">${icon("x")} ${tr("removeEnergy")}</button>` : `<button class="btn sm primary" data-sh-dash="${esc(a.key)}" data-on="1">${icon("plus")} ${tr("addEnergy")}</button>`}</div>
       </div>`).join("");
     const runs = pl.runs.map(r => {
-      const st = r.user ? `<span class="pill ok">${icon("check")}${esc(r.name)}</span>`
-        : r.name ? `<span class="muted">${esc(r.name)} · ${Math.round(r.conf * 100)} %</span>`
-        : r.guess ? `<span class="atyp">${tr("maybe")} ${esc(r.guess)} ?</span>` : `<span class="atyp">${icon("help")}${tr("needsConfirmation")}</span>`;
-      const btns = names.map(n => `<button class="btn sm ${(r.user && r.name === n) ? "primary" : ""}" data-sh-run="${r.id}" data-name="${esc(n)}" ${(r.user && r.name === n) ? "disabled" : ""}>${esc(n)}</button>`).join("");
+      const st = r.user ? `<span class="pill ok">${icon("check")}${esc(appliance(r.name))}</span>`
+        : r.name ? `<span class="muted">${esc(appliance(r.name))} · ${Math.round(r.conf * 100)} %</span>`
+        : r.guess ? `<span class="atyp">${tr("maybe")} ${esc(appliance(r.guess))} ?</span>` : `<span class="atyp">${icon("help")}${tr("needsConfirmation")}</span>`;
+      const btns = names.map(n => `<button class="btn sm ${(r.user && r.name === n) ? "primary" : ""}" data-sh-run="${r.id}" data-name="${esc(n)}" ${(r.user && r.name === n) ? "disabled" : ""}>${esc(appliance(n))}</button>`).join("");
       return `<div class="row"><div class="grow"><div class="t1">${fmtWhen(r.start * 1000)}</div><div class="t2">${fmtDur(r.D)} · ${fmtKwh(r.wh / 1000)} · ${st}</div></div><div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${btns}</div></div>`;
     }).join("") || `<div class="empty">${tr("noSharedRuns")}</div>`;
     return `<div class="card stack" style="gap:14px;margin-bottom:16px">
-      <div class="card-h"><div><h2>${icon("plug")} ${esc(tr("sharedPlug", { name: pl.name }))}</h2><p>${esc(tr("sharedDescription", { names: names.join(` ${tr("or")} `) }))}</p></div><span class="pill">${fmtW(pl.power)} · ${tr("currently")}</span></div>
+      <div class="card-h"><div><h2>${icon("plug")} ${esc(tr("sharedPlug", { name: pl.name }))}</h2><p>${esc(tr("sharedDescription", { names: names.map(appliance).join(` ${tr("or")} `) }))}</p></div><span class="pill">${fmtW(pl.power)} · ${tr("currently")}</span></div>
       ${now}
       <div class="groups" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">${apps}</div>
       <div><p class="sub" style="font-size:12.5px;margin:0 0 6px">${tr("latestProgrammes")}</p><div class="list">${runs}</div></div>
@@ -1005,7 +1008,7 @@ function sharedBlock() {
   }).join("");
 }
 function bindShared() {
-  $$("[data-sh-run]").forEach(b => b.onclick = () => act({ action: "shared_label", rid: b.dataset.shRun, name: b.dataset.name }, tr("sharedSaved", { name: b.dataset.name })));
+  $$("[data-sh-run]").forEach(b => b.onclick = () => act({ action: "shared_label", rid: b.dataset.shRun, name: b.dataset.name }, tr("sharedSaved", { name: appliance(b.dataset.name) })));
   $$("[data-sh-dash]").forEach(b => b.onclick = () => act({ action: "shared_dash", key: b.dataset.shDash, on: b.dataset.on === "1" }, tr(b.dataset.on === "1" ? "addedEnergy" : "removedEnergy")));
 }
 
@@ -1071,11 +1074,11 @@ function pageRapport() {
     // fiabilité mesurée : ce que le programme avait rangé tout seul, et ce que tu en as dit ensuite
     const v = S.status.verdicts || { n: 0, ok: 0, errors: [] };
     if (!v.n) return `<div class="banner" style="margin-top:16px">${icon("check")}<div class="grow"><b>Fiabilité mesurée</b> : pas encore de mesure. Chaque fois que tu confirmes (« Oui, c'est ça ») ou corriges une utilisation rangée toute seule, le programme note s'il avait raison.</div></div>`;
-    return `<div class="banner" style="margin-top:16px">${icon(v.ok === v.n ? "check" : "alert")}<div class="grow"><b>Fiabilité mesurée sur tes réponses</b> (30 jours) : <b>${v.ok} juste${v.ok > 1 ? "s" : ""} sur ${v.n}</b> rangement${v.n > 1 ? "s" : ""} automatique${v.n > 1 ? "s" : ""} que tu as vérifié${v.n > 1 ? "s" : ""}.${v.errors.length ? ` Erreurs : ${v.errors.map(x => `${fmtWhen(x.start * 1000)}, « ${esc(x.auto)} » au lieu de « ${esc(x.user || "pas reconnu")} »`).join(" ; ")}.` : ""}</div></div>`;
+    return `<div class="banner" style="margin-top:16px">${icon(v.ok === v.n ? "check" : "alert")}<div class="grow"><b>Fiabilité mesurée sur tes réponses</b> (30 jours) : <b>${v.ok} juste${v.ok > 1 ? "s" : ""} sur ${v.n}</b> rangement${v.n > 1 ? "s" : ""} automatique${v.n > 1 ? "s" : ""} que tu as vérifié${v.n > 1 ? "s" : ""}.${v.errors.length ? ` Erreurs : ${v.errors.map(x => `${fmtWhen(x.start * 1000)}, « ${esc(appliance(x.auto))} » au lieu de « ${esc(x.user ? appliance(x.user) : tr("unknown"))} »`).join(" ; ")}.` : ""}</div></div>`;
   })()}
   ${hyps.length || ready.length ? `<div class="section-t"><h2>Ce que le programme pense avoir trouvé</h2><span>réponds en un clic</span></div>
-  <div class="groups">${ready.map(g => `<div class="card hcard"><div class="gtitle"><div class="gicon" style="background:${col(g)}">${icon(gicon(g))}</div><div style="flex:1;min-width:0"><div class="q">${g.auto ? `Le programme pense que c'est : ${esc(g.name.toLowerCase())}` : `${esc(g.name)} est prêt`}</div><div class="muted" style="font-size:12.5px">${gstats(g.id).n} utilisations qui se ressemblent</div></div></div>${confBar(g.conf)}<div class="acts"><button class="btn sm primary" data-ok="${g.id}">${icon("check")} C'est bon</button>${g.auto ? `<button class="btn sm" data-no="${g.id}">Non, c'est…</button>` : ""}<a class="btn sm" href="#/groupe/${g.id}">Voir</a></div></div>`).join("")}
-  ${hyps.map(g => { const st = gstats(g.id), h = hypLabel(g); return `<div class="card hcard"><div class="gtitle"><div class="gicon" style="background:${col(g)}">${icon("help")}</div><div style="flex:1;min-width:0"><div class="q">Groupe ${g.letter}${h ? ` ressemble à : ${esc(h.toLowerCase())}` : " : appareil inconnu"}</div><div class="muted" style="font-size:12.5px">${st.n} fois · ${fmtW(st.P)} · ${fmtDur(st.D)}</div></div></div><div class="chart mini" data-ov="${g.id}"></div><ul>${hypReasons(g, st).slice(0, 3).map(r => `<li>${esc(r)}</li>`).join("")}</ul>${confBar(st.conf, g)}<div class="acts">${h ? `<button class="btn sm primary" data-yes="${g.id}">${icon("check")} Oui</button><button class="btn sm" data-no="${g.id}">Non, c'est…</button>` : `<button class="btn sm primary" data-no="${g.id}">${icon("edit")} Nommer</button>`}<a class="btn sm ghost" href="#/groupe/${g.id}">Détails</a></div></div>`; }).join("")}</div>` : ""}
+  <div class="groups">${ready.map(g => `<div class="card hcard"><div class="gtitle"><div class="gicon" style="background:${col(g)}">${icon(gicon(g))}</div><div style="flex:1;min-width:0"><div class="q">${g.auto ? `Le programme pense que c'est : ${esc(gname(g).toLowerCase())}` : `${esc(gname(g))} est prêt`}</div><div class="muted" style="font-size:12.5px">${gstats(g.id).n} utilisations qui se ressemblent</div></div></div>${confBar(g.conf)}<div class="acts"><button class="btn sm primary" data-ok="${g.id}">${icon("check")} C'est bon</button>${g.auto ? `<button class="btn sm" data-no="${g.id}">Non, c'est…</button>` : ""}<a class="btn sm" href="#/groupe/${g.id}">Voir</a></div></div>`).join("")}
+  ${hyps.map(g => { const st = gstats(g.id), h = hypLabel(g); return `<div class="card hcard"><div class="gtitle"><div class="gicon" style="background:${col(g)}">${icon("help")}</div><div style="flex:1;min-width:0"><div class="q">Groupe ${g.letter}${h ? ` ressemble à : ${esc(appliance(h).toLowerCase())}` : " : appareil inconnu"}</div><div class="muted" style="font-size:12.5px">${st.n} fois · ${fmtW(st.P)} · ${fmtDur(st.D)}</div></div></div><div class="chart mini" data-ov="${g.id}"></div><ul>${hypReasons(g, st).slice(0, 3).map(r => `<li>${esc(r)}</li>`).join("")}</ul>${confBar(st.conf, g)}<div class="acts">${h ? `<button class="btn sm primary" data-yes="${g.id}">${icon("check")} Oui</button><button class="btn sm" data-no="${g.id}">Non, c'est…</button>` : `<button class="btn sm primary" data-no="${g.id}">${icon("edit")} Nommer</button>`}<a class="btn sm ghost" href="#/groupe/${g.id}">Détails</a></div></div>`; }).join("")}</div>` : ""}
   <div class="grid g-2" style="margin-top:16px">
     <div class="card"><div class="card-h"><div><h2>Énergie par groupe</h2><p>${ds.length} jour${ds.length > 1 ? "s" : ""}, au prix de ${String(PRIX).replace(".", ",")} €/kWh</p></div></div>
       ${keys.map(k => `<div class="hbar"><div class="nm"><span class="sw" style="background:${layerCol(k)}"></span><span>${esc(layerName(k))}</span></div><div class="trk"><div class="fill" style="width:${per[k] / mx * 100}%;background:${layerCol(k)}"></div></div><div class="v">${fmtKwh(per[k])} · ${fmtEur(per[k])}</div></div>`).join("")}
@@ -1092,8 +1095,8 @@ function pageRapport() {
       <tr><td><b>Total</b></td><td></td><td class="r"><b>${nf2.format(tot)}</b></td><td class="r"><b>${fmtEur(tot)}</b></td></tr></tbody></table></div>
     <div class="card"><h2>Ce qui a changé</h2><div class="changes" style="margin-top:10px">
       <div>${icon("spark")}<span><b>${newG} nouveau${newG > 1 ? "x" : ""} groupe${newG > 1 ? "s" : ""}</b> repéré${newG > 1 ? "s" : ""} cette semaine.</span></div>
-      ${valid.length ? `<div>${icon("sensor")}<span><b>${valid.map(g => esc(g.name || "Groupe " + g.letter)).join(", ")}</b> reconnu${valid.length > 1 ? "s" : ""} automatiquement.</span></div>` : ""}
-      ${atyG.map(g => `<div>${icon("alert")}<span><b>${esc(g.name)}</b> : ${members(g.id).filter(isAty).length} utilisation(s) ne ressemblent pas aux autres. À vérifier.</span></div>`).join("")}
+      ${valid.length ? `<div>${icon("sensor")}<span><b>${valid.map(g => esc(gname(g))).join(", ")}</b> reconnu${valid.length > 1 ? "s" : ""} automatiquement.</span></div>` : ""}
+      ${atyG.map(g => `<div>${icon("alert")}<span><b>${esc(gname(g))}</b> : ${members(g.id).filter(isAty).length} utilisation(s) ne ressemblent pas aux autres. À vérifier.</span></div>`).join("")}
       ${splits.map(g => { const sp = gstats(g.id).split; return `<div>${icon("split")}<span><b>${esc(gname(g))}</b> semble avoir deux allures (environ ${fmtW(sp.lowP)} et ${fmtW(sp.highP)}).</span></div>`; }).join("")}
       <div>${icon("zap")}<span>Ce qui reste toujours allumé consomme environ <b>${nf0.format(baseW)} W</b>, soit environ ${fmtEur(baseW / 1000 * 24 * 365)} par an. C'est souvent la première piste d'économie.</span></div>
     </div></div>
@@ -1107,6 +1110,49 @@ function mountRapport() {
   $$("[data-ok]").forEach(b => b.onclick = () => confirmGroup(b.dataset.ok));
   $$("[data-no]").forEach(b => b.onclick = () => renameModal(b.dataset.no));
   $$("#heat i[data-l]").forEach(c => { if (c.dataset.v === "") return; c.onpointerenter = ev => showTip(ev, `<div class="t">${esc(c.dataset.l)}</div><div class="r"><span>Consommé</span><b>${fmtKwh(+c.dataset.v)}</b></div>`); c.onpointermove = moveTip; c.onpointerleave = hideTip; });
+}
+
+function pageSettings() {
+  const threshold = S.status.detection_w ?? 350;
+  return `<div class="page-h"><div><h1>${tr("settings")}</h1><p class="sub">${tr("settingsDescription")}</p></div></div>
+    <form class="card stack" id="settings-form" style="max-width:640px;gap:14px">
+      <label for="settings-language">${tr("settingsLanguage")}</label>
+      <select class="field" id="settings-language">
+        ${[["fr", "Français"], ["en", "English"], ["it", "Italiano"]].map(([value, label]) => `<option value="${value}" ${language === value ? "selected" : ""}>${label}</option>`).join("")}
+      </select>
+      <label for="settings-threshold">${tr("settingsThreshold")} (W)</label>
+      <input class="field" id="settings-threshold" type="number" min="50" max="2000" step="1" required value="${esc(threshold)}">
+      <p class="sub">${tr("settingsThresholdHelp")}</p>
+      <p class="sub">${tr("settingsHistoryWarning")}</p>
+      <div><button class="btn primary" type="submit">${tr("save")}</button></div>
+      <div id="settings-result" role="status"></div>
+    </form>`;
+}
+
+function mountSettings() {
+  $("#settings-form").onsubmit = async e => {
+    e.preventDefault();
+    const form = e.currentTarget, button = form.querySelector("button");
+    const selected = $("#settings-language", form).value;
+    const raw = $("#settings-threshold", form).value, threshold = Number(raw);
+    if (!raw || !Number.isInteger(threshold) || threshold < 50 || threshold > 2000) {
+      $("#settings-result", form).textContent = tr("settingsInvalidThreshold");
+      return;
+    }
+    button.disabled = true;
+    try {
+      await call({ type: "empreinte/settings", language: selected, detection_w: threshold });
+      setLanguage(selected);
+      S.status.language = selected;
+      S.status.detection_w = threshold;
+      $("#settings-result", form).textContent = tr("settingsSaved");
+      renderNav();
+    } catch (err) {
+      $("#settings-result", form).textContent = tr("error") + ": " + (err.message || err.code || String(err));
+    } finally {
+      button.disabled = false;
+    }
+  };
 }
 
 // ---------- Rendu
@@ -1145,6 +1191,7 @@ async function render() {
     if ($("#b-cat-new")) $("#b-cat-new").onclick = () => nameModal("Nouvelle catégorie", "", n => act({ action: "cat_create", name: n }, `Catégorie « ${n} » créée`));
   }
   else if (page === "rapport") { v.innerHTML = pageRapport(); mountRapport(); }
+  else if (page === "parametres") { v.innerHTML = pageSettings(); mountSettings(); }
   else { v.innerHTML = pageApercu(); mountApercu(); }
   $$("[data-go]", v).forEach(el => el.addEventListener("click", e => { if (e.target.closest("button,a,input")) return; go(el.dataset.go); }));
 }
@@ -1204,7 +1251,7 @@ export function start(h) {
   }).catch(err => { S.error = err.message || err.code || String(err); render(); });
   // Mise à jour discrète toutes les minutes (sauf si l'utilisateur est en train de sélectionner)
   setInterval(async () => {
-    if (document.hidden || S.sel.size || $(".modal-back") || menuEl) return;
+    if (document.hidden || S.sel.size || $(".modal-back") || menuEl || route().page === "parametres") return;
     try { await refresh(); const y = window.scrollY; await render(); window.scrollTo(0, y); } catch (e) { }
   }, 60e3);
   return {

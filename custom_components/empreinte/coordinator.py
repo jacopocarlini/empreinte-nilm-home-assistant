@@ -18,7 +18,7 @@ from homeassistant.util import dt as dt_util
 
 from . import engine
 from .engine import engine_median
-from .const import (APPLIANCE_TIPS, CLIM_LAG_KWH, PROGRAMME_GAP_S, TIP_IDS, CLIM_MAX_W, VEILLE_NAME, HYP_MIN_DAYS, HYP_MIN_N, HYP_MIN_SCORE, AUTO_NAME_COHERENCE, AUTO_NAME_DAYS, AUTO_NAME_MARGIN, AUTO_NAME_MIN, AUTO_NAME_SCORE, BACKFILL_DAYS, CONF_CLIMATE, CONF_CLIMATE_ENERGY, CONF_EXTRA_LINES, CONF_FRIDGE_KWH, CONF_LANGUAGE, CONF_MEASURED, CONF_SHARED, CONF_POWER_ENTITY, DEFAULT_LANGUAGE, LANGUAGES, DATA_DIR, DB_FILE, DOMAIN,
+from .const import (APPLIANCE_TIPS, CLIM_LAG_KWH, PROGRAMME_GAP_S, TIP_IDS, CLIM_MAX_W, VEILLE_NAME, HYP_MIN_DAYS, HYP_MIN_N, HYP_MIN_SCORE, AUTO_NAME_COHERENCE, AUTO_NAME_DAYS, AUTO_NAME_MARGIN, AUTO_NAME_MIN, AUTO_NAME_SCORE, BACKFILL_DAYS, CONF_CLIMATE, CONF_CLIMATE_ENERGY, CONF_DETECTION_W, DEFAULT_DETECTION_W, MIN_DETECTION_W, MAX_DETECTION_W, CONF_EXTRA_LINES, CONF_FRIDGE_KWH, CONF_LANGUAGE, CONF_MEASURED, CONF_SHARED, CONF_POWER_ENTITY, DEFAULT_LANGUAGE, LANGUAGES, DATA_DIR, DB_FILE, DOMAIN,
                     EVENTS_SENT_DAYS, PROCESS_EVERY_S, SAMPLES_KEEP_DAYS)
 from .shared import ON_W as SHARED_ON_W, SharedPlugs
 from .store import Store
@@ -62,7 +62,8 @@ class Live:
     Un arrêt de moins de GAP_S (thermostat d'un four) ne compte pas comme une fin.
     """
 
-    def __init__(self):
+    def __init__(self, min_edge=engine.EDGE_W):
+        self.min_edge = min_edge
         self.prev = None
         self.running: dict[str, dict] = {}   # gid -> {start, power, off_since, floor}
         self.waiting: dict[str, dict] = {}   # sauts qui ressemblent à un appareil, à confirmer (voir LIVE_CONFIRM_S)
@@ -81,9 +82,9 @@ class Live:
             self.edges.popleft()
         if self.prev is not None:
             d = p - self.prev
-            if abs(d) >= engine.EDGE_W:
+            if abs(d) >= self.min_edge:
                 self.edges.append((t, d))
-            if d >= engine.EDGE_W:
+            if d >= self.min_edge:
                 gid = self._best(d, {g: c["P"] for g, c in cents.items()
                                      if g not in self.running or self.running[g]["off_since"]}, 0.18)
                 if gid:
@@ -96,13 +97,13 @@ class Live:
                         changed = True                    # c'était autre chose (plaques, four…)
                     elif gid not in self.waiting:
                         self.waiting[gid] = {"start": t, "power": d, "off_since": None, "floor": floor, "before": self.prev}
-            elif d <= -engine.EDGE_W:
+            elif d <= -self.min_edge:
                 on = {g: r["power"] for g, r in self.running.items() if not r["off_since"]}
                 gid = self._best(-d, on, 0.25)
                 if gid:
                     self.running[gid]["off_since"] = t
                     changed = True
-                elif on and abs(sum(on.values()) + d) <= max(250, 0.25 * -d):
+                elif on and abs(sum(on.values()) + d) <= max(min(250, 0.25 * sum(on.values())), 0.25 * -d):
                     for g in on:
                         self.running[g]["off_since"] = t
                     changed = True
@@ -167,6 +168,13 @@ class Coordinator:
         if self.language not in LANGUAGES:
             _LOGGER.warning("Empreinte : langue inconnue %r, français utilisé", self.language)
             self.language = DEFAULT_LANGUAGE
+        threshold = opts.get(CONF_DETECTION_W, DEFAULT_DETECTION_W)
+        if isinstance(threshold, bool) or not isinstance(threshold, int) or not MIN_DETECTION_W <= threshold <= MAX_DETECTION_W:
+            _LOGGER.warning("Empreinte: invalid detection threshold %r, using %s W", threshold, DEFAULT_DETECTION_W)
+            threshold = DEFAULT_DETECTION_W
+        self.detection_w = threshold
+        self.edge_w = min(engine.EDGE_W, threshold)
+        self.off_w = min(engine.OFF_W, threshold * engine.OFF_W / engine.ON_W)
         self.power_entity = entry.data.get(CONF_POWER_ENTITY)
         self.climate_entity = opts.get(CONF_CLIMATE) or None          # réglages facultatifs (voir const.py)
         self.clim_energy = opts.get(CONF_CLIMATE_ENERGY) or None
@@ -184,7 +192,7 @@ class Coordinator:
         self.processed_until = 0.0
         self.last_run = None
         self.last_error = None
-        self.live = Live()
+        self.live = Live(self.edge_w)
         self.lock = asyncio.Lock()
         self.undo: list = []           # pile d'annulation (20 niveaux)
         self.add_entities = {}
@@ -267,8 +275,10 @@ class Coordinator:
         self._t_load = time.time()
         self.ranking: dict = {}
         self.advice: dict = {}
-        if not self.store.get_meta(RESEGMENT_KEY):
+        previous_threshold = self.store.get_meta("detection_w", DEFAULT_DETECTION_W)
+        if not self.store.get_meta(RESEGMENT_KEY) or previous_threshold != self.detection_w:
             self._resegment()
+        self.store.set_meta("detection_w", self.detection_w)
         self._renum = self.store.get_meta("renumber", [])
         self._sub_since = self.store.get_meta("sub_since", 0) or self._sub_since
         if not self.store.get_meta("split_v1"):
@@ -276,7 +286,7 @@ class Coordinator:
         seen, dups = set(), []
         for r in self.store.events():
             # Un redémarrage de HA en pleine analyse peut enregistrer deux fois la même utilisation.
-            key = (round(r["start"]), round(r["f"]["P"], -2))
+            key = (round(r["start"]), round(r["f"]["P"], -2 if self.detection_w >= 300 else 0))
             if key in seen:
                 dups.append(r["id"])
                 continue
@@ -1238,8 +1248,8 @@ class Coordinator:
             return
         ts = [r[0] for r in rows]
         # les prises mesurées (PC…) ne comptent pas ; leur décalage avec le compteur est corrigé
-        ps = engine.realign(ts, [r[1] for r in rows], [r[2] for r in rows])
-        found, open_start = engine.segment(ts, ps)
+        ps = engine.realign(ts, [r[1] for r in rows], [r[2] for r in rows], self.edge_w)
+        found, open_start = engine.segment(ts, ps, self.detection_w)
         # une montée lente pendant que la clim tourne : c'est elle qui monte en puissance, pas un appareil
         found = [e for e in found if not (e.get("creep") and e["start"] <= self._clim_until)]
         self.running_parts = [x for x in (self._live_parts(ts, ps, open_start) if open_start else [])
@@ -1356,7 +1366,7 @@ class Coordinator:
         """Un appareil déjà connu et long (four, lave-vaisselle…) qui démarre est suivi tout seul, mais
         seulement si c'est net : pour une ressemblance moins nette, il est seulement proposé."""
         for x in self.running_parts:
-            if x["end"] or x.get("low") or not x.get("hint_group"):
+            if x["end"] or x.get("low") or x["p"] < engine.EDGE_W or not x.get("hint_group"):
                 continue
             # on attend que le pic de démarrage soit passé : un chauffage à céramique tire 1,6 kW quelques secondes
             # (la puissance du lave-vaisselle) avant de se stabiliser vers 800 W
@@ -1703,9 +1713,9 @@ class Coordinator:
                     if rest[k] <= 2 * tr["p"]:
                         rest[k] = 0
                     k += 1
-            rest = engine.clean_rest(rest)
-            keep = [k for k, v in enumerate(rest) if v >= 100]
-            if not keep or max(rest) < engine.ON_W:
+            rest = engine.clean_rest(rest, min_level=self.off_w)
+            keep = [k for k, v in enumerate(rest) if v >= min(100, self.detection_w)]
+            if not keep or max(rest) < self.detection_w:
                 self.store.delete_events([e.id])
                 self.evs.remove(e)
                 del self.rows[e.id]
@@ -1751,7 +1761,7 @@ class Coordinator:
         pre = [p for t, p in zip(ts, ps) if open_start - engine.PRE_S <= t < open_start] or [ps[max(0, i0 - 1)]]
         prof = engine.profile(ts, ps, i0, open_start, ts[-1] + engine.STEP, engine.engine_median(pre))
         out = []
-        for c in engine.live_parts(prof):
+        for c in engine.live_parts(prof, self.edge_w):
             start = open_start + c["k0"] * engine.STEP
             loc = dt_util.as_local(dt_util.utc_from_timestamp(start))
             f = {"P": c["h"], "D": max(engine.STEP, (c["k1"] - c["k0"]) * engine.STEP), "on": 1 if c["n"] == 1 else 0.6,
@@ -1769,7 +1779,7 @@ class Coordinator:
         for gid, c in self.cents.items():
             g = self.groups.get(gid)
             if g and g.get("name"):
-                d = abs(f["P"] - c["P"]) / max(0.08 * max(f["P"], c["P"]), 120)
+                d = abs(f["P"] - c["P"]) / engine.power_scale(f, c)
                 if d < bd:
                     best, bd = gid, d
         if best:
@@ -1782,13 +1792,14 @@ class Coordinator:
     def _pending_for(self, start, power):
         for p in self.pending:
             if p.get("at") and abs(p["at"] - start) <= 120 and abs((p.get("p") or 1) - power) / max(p.get("p") or 1, power) <= 0.35:
-                return {"name": ("peut-être " if p.get("maybe") else "") + p["name"], "t": p["t"]}
+                return {"name": ("peut-être " if p.get("maybe") else "") + p["name"],
+                        "raw_name": p["name"], "maybe": bool(p.get("maybe")), "t": p["t"]}
         return None
 
     def _parts(self, e, min_edge=None) -> list[dict]:
         """Une utilisation, ou plusieurs si deux appareils tournaient en même temps."""
         # quand une clim tourne, les sauts de son compresseur ne sont pas des appareils qui démarrent ou s'arrêtent
-        pieces = engine.split_session(e["prof"], min_edge or (CLIM_MAX_W if e["start"] <= self._clim_until else engine.EDGE_W))
+        pieces = engine.split_session(e["prof"], min_edge or (CLIM_MAX_W if e["start"] <= self._clim_until else self.edge_w), self.detection_w)
         out = []
         for k0, prof in pieces:
             start = e["start"] + k0 * engine.STEP
@@ -1949,10 +1960,10 @@ class Coordinator:
                     j = round((ro["start"] + k * engine.STEP - rk["start"]) / engine.STEP)
                     if 0 <= j < len(rk["prof"]):
                         rest[k] = max(0, rest[k] - rk["prof"][j])
-                rest = engine.clean_rest(rest)
+                rest = engine.clean_rest(rest, min_level=self.off_w)
                 fixed += 1
-                kept = [k for k, v in enumerate(rest) if v >= 100]
-                if not kept or max(rest) < engine.ON_W:
+                kept = [k for k, v in enumerate(rest) if v >= min(100, self.detection_w)]
+                if not kept or max(rest) < self.detection_w:
                     self.store.delete_events([other.id])
                     self.evs.remove(other)
                     del self.rows[other.id]
@@ -2305,7 +2316,7 @@ class Coordinator:
             at, pw = msg.get("at"), msg.get("p") or 1
             running = at and any(abs(x["start"] - at) <= 60 and abs(x["p"] - pw) / max(x["p"], pw) <= 0.35 and not x["end"]
                                  for x in self.running_parts)
-            low = any(x.get("low") and abs(x["start"] - at) <= 60
+            low = pw < engine.EDGE_W or any(x.get("low") and abs(x["start"] - at) <= 60
                       and abs(x["p"] - pw) / max(x["p"], pw) <= 0.35 for x in self.running_parts) if at else False
             started = bool(running and not msg.get("maybe") and self.open_start is not None and at >= self.open_start - 60
                            and not low and self._start_track(msg["name"].strip()[:40], at, pw, user=True))
@@ -2470,7 +2481,7 @@ class Coordinator:
         boxes = [e for e in self.evs if self.rows[e.id]["start"] - 30 <= at <= self.rows[e.id]["end"]]
         for box in sorted(boxes, key=lambda e: self.rows[e.id]["end"] - self.rows[e.id]["start"], reverse=True):
             r = self.rows[box.id]
-            res = engine.extract_component(r["prof"], round((at - r["start"]) / engine.STEP), power)
+            res = engine.extract_component(r["prof"], round((at - r["start"]) / engine.STEP), power, self.edge_w, self.detection_w)
             if not res:
                 continue
             k0, part, rest = res
@@ -2483,8 +2494,8 @@ class Coordinator:
             ev = engine.Ev(eid, f)
             self.evs.append(ev)
             # le reste de l'utilisation mélangée garde sa place, recalculé sans cet appareil
-            keep = [k for k, v in enumerate(rest) if v >= 100]
-            if not keep or max(rest) < engine.ON_W:
+            keep = [k for k, v in enumerate(rest) if v >= min(100, self.detection_w)]
+            if not keep or max(rest) < self.detection_w:
                 self.store.delete_events([box.id])
                 self.evs.remove(box)
                 del self.rows[box.id]
@@ -2535,7 +2546,7 @@ class Coordinator:
                            "shape": c["shape"] if c else None, "entities": self.entity_ids(g["id"])})
         return {
             "groups": groups, "events": evs, "kinds": {**{k: v[0] for k, v in engine.KINDS.items()}, **self.learned_labels},
-            "status": {"language": self.language, "verdicts": self._verdict_summary(), "categories": [{**{k: v for k, v in c.items() if k != "counted"}, "power": self.cat_power(c["id"])} for c in self.cats],
+            "status": {"language": self.language, "detection_w": self.detection_w, "verdicts": self._verdict_summary(), "categories": [{**{k: v for k, v in c.items() if k != "counted"}, "power": self.cat_power(c["id"])} for c in self.cats],
                        "energy_log": [{**x, "entity": self._energy_entity(x["target"]), "in_dash": self._in_dash(x["target"])}
                                       for x in self.energy_log[-200:]], "last_run": self.last_run, "error": self.last_error, "n_events": len(self.evs),
                        "first_sample": self._first, "power_entity": self.power_entity,
@@ -2590,7 +2601,7 @@ class Coordinator:
             if e.pinned and e.id not in self.doubts:
                 s.append(1.0)
                 continue
-            dp = abs(e.f["P"] - c["P"]) / max(0.08 * max(e.f["P"], c["P"]), 120)
+            dp = abs(e.f["P"] - c["P"]) / engine.power_scale(e.f, c)
             s.append(engine.similarity(dp) * (1 if e.f["shape"] == c["shape"] else 0.7) * (0.5 if e.id in self.doubts else 1))
         n, errors = len(mem), sum(1 for e in self.evs if gid in e.excluded)
         return round(sum(s) / n * min(1, n / 8) ** 0.5 * n / (n + 2 * errors), 3)
@@ -2656,10 +2667,12 @@ class Coordinator:
                 self.add_entities["sensor"](ents[1:])
         self._drop_old_shared(want)
         dev_reg = dr.async_get(self.hass)
+        from .text import display_appliance
         for gid, g in self.groups.items():
             dev = self._device(gid)
-            if dev and g["name"] and dev.name != g["name"]:
-                dev_reg.async_update_device(dev.id, name=g["name"])
+            name = display_appliance(self, g["name"])
+            if dev and name and dev.name != name:
+                dev_reg.async_update_device(dev.id, name=name)
 
     @callback
     def _drop_old_shared(self, want: set):

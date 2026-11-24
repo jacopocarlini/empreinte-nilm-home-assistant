@@ -1,3 +1,36 @@
+export const applianceNames = {
+  "Douche (chauffe-eau)": ["Shower (water heater)", "Doccia (scaldabagno)"],
+  "Four": ["Oven", "Forno"],
+  "Micro-ondes": ["Microwave", "Forno a microonde"],
+  "Bouilloire": ["Kettle", "Bollitore"],
+  "Frigo": ["Fridge", "Frigorifero"],
+  "Chauffage salle de bain": ["Bathroom heater", "Riscaldamento bagno"],
+  "Lave-linge": ["Washing machine", "Lavatrice"],
+  "Sèche-linge": ["Tumble dryer", "Asciugatrice"],
+  "Lave-vaisselle": ["Dishwasher", "Lavastoviglie"],
+  "Plaques de cuisson": ["Cooktop", "Piano cottura"],
+  "Aspirateur": ["Vacuum cleaner", "Aspirapolvere"],
+  "Fer à repasser": ["Iron", "Ferro da stiro"],
+  "Sèche-cheveux": ["Hair dryer", "Asciugacapelli"],
+  "Grille-pain": ["Toaster", "Tostapane"],
+  "Cafetière": ["Coffee maker", "Macchina del caffè"],
+  "Climatisation": ["Air conditioning", "Climatizzatore"],
+};
+
+export function applianceName(language, name) {
+  const index = language === "en" ? 0 : language === "it" ? 1 : -1;
+  return index < 0 || !Object.hasOwn(applianceNames, name) ? name : applianceNames[name][index];
+}
+
+export function applianceSelection(input, chips, language, initial = "") {
+  let selected = initial;
+  const select = name => { selected = name; input.value = applianceName(language, name); };
+  select(initial);
+  input.addEventListener("input", () => { selected = null; });
+  chips.forEach(chip => chip.onclick = () => { select(chip.dataset.s); input.focus(); });
+  return () => selected !== null && input.value === applianceName(language, selected) ? selected : input.value.trim();
+}
+
 export const messages = {
   fr: {
     overview: "Aperçu", discoveries: "Découvertes", habits: "Habitudes", map: "Carte",
@@ -168,6 +201,31 @@ export const messages = {
     getStarted: "Inizia",
   },
 };
+
+Object.assign(messages.fr, {
+  settings: "Paramètres", settingsDescription: "Choisis la langue et la sensibilité de détection.",
+  settingsLanguage: "Langue", settingsThreshold: "Variation minimale de puissance",
+  settingsThresholdHelp: "Un seuil bas peut détecter de petites charges, mais aussi du bruit et des appareils superposés. La détection et l'identification des lampes ne sont pas garanties.",
+  settingsHistoryWarning: "Modifier le seuil relance l'analyse de l'historique disponible. Les événements et réponses peuvent changer ou disparaître, notamment si les mesures anciennes ne sont plus conservées.",
+  settingsSaved: "Paramètres enregistrés. L'intégration se recharge et l'historique peut être réanalysé.",
+  settingsInvalidThreshold: "Saisis un nombre entier entre 50 et 2 000 W.",
+});
+Object.assign(messages.en, {
+  settings: "Settings", settingsDescription: "Choose the language and detection sensitivity.",
+  settingsLanguage: "Language", settingsThreshold: "Minimum power change",
+  settingsThresholdHelp: "A lower threshold can detect small loads, but also noise and overlapping appliances. Light detection and identification are not guaranteed.",
+  settingsHistoryWarning: "Changing the threshold reruns analysis of the available history. Events and answers may change or disappear, especially if older measurements are no longer retained.",
+  settingsSaved: "Settings saved. The integration is reloading and history may be reanalysed.",
+  settingsInvalidThreshold: "Enter a whole number between 50 and 2,000 W.",
+});
+Object.assign(messages.it, {
+  settings: "Impostazioni", settingsDescription: "Scegli la lingua e la sensibilità di rilevamento.",
+  settingsLanguage: "Lingua", settingsThreshold: "Variazione minima di potenza",
+  settingsThresholdHelp: "Una soglia più bassa può rilevare piccoli carichi, ma anche rumore e dispositivi sovrapposti. Il rilevamento e l'identificazione delle luci non sono garantiti.",
+  settingsHistoryWarning: "Modificare la soglia riavvia l'analisi dello storico disponibile. Eventi e risposte possono cambiare o scomparire, soprattutto se le misurazioni più vecchie non sono più conservate.",
+  settingsSaved: "Impostazioni salvate. L'integrazione si sta ricaricando e lo storico potrebbe essere rianalizzato.",
+  settingsInvalidThreshold: "Inserisci un numero intero tra 50 e 2.000 W.",
+});
 
 Object.assign(messages.fr, {
   groupMissing: "Ce groupe n'existe plus (fusionné ou supprimé).",

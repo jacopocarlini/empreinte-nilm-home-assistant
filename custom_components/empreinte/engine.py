@@ -45,7 +45,7 @@ def quantile(vals, q):
 LAG_S = 30           # une prise et le compteur peuvent signaler le même changement jusqu'à 30 s d'écart
 
 
-def realign(ts: list[float], ps: list[float], subs: list[float]) -> list[float]:
+def realign(ts: list[float], ps: list[float], subs: list[float], min_edge: float = 300) -> list[float]:
     """Courbe du compteur moins les prises mesurées, en tenant compte de leur décalage.
 
     Le compteur et une prise ne signalent pas un même changement au même instant (quelques secondes, parfois
@@ -58,9 +58,9 @@ def realign(ts: list[float], ps: list[float], subs: list[float]) -> list[float]:
     n = len(out)
     for k in range(1, n):
         ds = subs[k] - subs[k - 1]
-        if abs(ds) < EDGE_W:
+        if abs(ds) < min_edge:
             continue
-        tol = max(150.0, 0.3 * abs(ds))
+        tol = max(min(150.0, 0.5 * abs(ds)), 0.3 * abs(ds))
         done = False
         # la prise en retard : la différence a sauté d'autant un peu avant (ou de plus : un autre appareil a démarré
         # en même temps)
@@ -114,12 +114,13 @@ def _low_start(prof):
     return None
 
 
-def segment(ts: list[float], ps: list[float]):
+def segment(ts: list[float], ps: list[float], on_w: float = ON_W):
     """Découpe la courbe en événements.
 
     Retourne (events, open_start) : la liste des événements terminés
     (start, end, base, prof) et le début d'un événement encore en cours, ou None.
     """
+    off_w = min(OFF_W, on_w * OFF_W / ON_W)
     events = []
     quiet: deque = deque()
     base = None
@@ -159,13 +160,13 @@ def segment(ts: list[float], ps: list[float]):
         if i_start is None:
             if base is None:
                 base = p
-            if p - base > ON_W:
+            if p - base >= on_w:
                 # Le fond de l'utilisation = le niveau juste avant le saut (et pas la moyenne des 15 dernières
                 # minutes, qui retarde) : un chargeur allumé peu avant n'est pas compté dans l'appareil.
                 # Le Linky n'envoie une valeur que quand elle change : sans valeur récente, la dernière reçue est encore vraie.
                 just_before = [q[1] for q in quiet if q[0] >= t - PRE_S] or ([quiet[-1][1]] if quiet else [])
                 base_ev = max(base, engine_median(just_before)) if just_before else base
-                if p - base_ev <= ON_W:
+                if p - base_ev < on_w:
                     # Pas de saut franc, mais la courbe est déjà bien au-dessus du fond : une plaque qu'on monte
                     # cran par cran, ou deux petits appareils l'un après l'autre. Si ça tient CREEP_S, c'est
                     # un appareil, compté depuis le début de la montée.
@@ -173,8 +174,8 @@ def segment(ts: list[float], ps: list[float]):
                         run_i = i
                     # (un appareil à thermostat qui se rallume n'est pas une montée : rien de gros juste avant)
                     if (t - ts[run_i] >= CREEP_S
-                            and engine_median(ps[run_i:i + 1]) - base > ON_W
-                            and all(q[1] - base <= ON_W for q in quiet if ts[run_i] - PRE_S <= q[0] < ts[run_i])):
+                            and engine_median(ps[run_i:i + 1]) - base >= on_w
+                            and all(q[1] - base < on_w for q in quiet if ts[run_i] - PRE_S <= q[0] < ts[run_i])):
                         i_start, last_above, base_ev = run_i, i, base
                         peak_ev = max(ps[run_i:i + 1]) - base_ev
                         creep, run_i = True, None
@@ -185,7 +186,7 @@ def segment(ts: list[float], ps: list[float]):
                 i_start, last_above, peak_ev, creep = i, i, p - base_ev, False
                 low_candidate, low_level = None, None
                 continue
-            if p - base > OFF_W:
+            if p - base > off_w:
                 if run_i is None:
                     run_i = i
             else:
@@ -204,7 +205,7 @@ def segment(ts: list[float], ps: list[float]):
                 low_candidate = None
             if (not creep and low_level is None and low_candidate is None
                     and t - ts[i_start] <= LOW_SPIKE_S
-                    and LOW_MIN_W <= p - base_ev <= LOW_MAX_W):
+                    and on_w >= ON_W and LOW_MIN_W <= p - base_ev <= LOW_MAX_W):
                 low_candidate = i
             # L'appareil est éteint quand la courbe redescend franchement : sous OFF_W, ou sous un tiers
             # de son pic (un petit appareil allumé entre-temps ne doit pas prolonger l'utilisation).
@@ -212,7 +213,7 @@ def segment(ts: list[float], ps: list[float]):
             # (une montée lente se compte depuis le fond : elle s'arrête plus tôt, pour ne pas garder un petit appareil
             # resté allumé après elle)
             threshold = max(30, 0.5 * low_level) if low_level is not None else max(
-                OFF_W, (CREEP_OFF_FRAC if creep else OFF_FRAC) * peak_ev)
+                off_w, (CREEP_OFF_FRAC if creep else OFF_FRAC) * peak_ev)
             if p - base_ev > threshold:
                 if t - ts[i_start] > MAX_EVENT_S:
                     close(i)
@@ -260,20 +261,20 @@ SPLIT_MAX = 3
 def _edges(prof, closed=True, min_edge=EDGE_W):
     """Sauts d'au moins min_edge dans un profil. closed=False : l'utilisation est encore en cours (pas d'arrêt final)."""
     pr = [0] + list(prof) + ([0] if closed else [])
-    raw = [(k, pr[k] - pr[k - 1]) for k in range(1, len(pr)) if abs(pr[k] - pr[k - 1]) >= 100]
+    raw = [(k, pr[k] - pr[k - 1]) for k in range(1, len(pr)) if abs(pr[k] - pr[k - 1]) >= min(100, min_edge)]
     out = []
     for k, d in raw:
         if out and (out[-1][1] > 0) == (d > 0) and k - out[-1][2] <= EDGE_MERGE:
             out[-1] = (out[-1][0], out[-1][1] + d, k)
         else:
             out.append((k, d, k))
-    return [(k_last if d < 0 else k0, d) for k0, d, k_last in _settle(out, SETTLE_S / STEP) if abs(d) >= min_edge]
+    return [(k_last if d < 0 else k0, d) for k0, d, k_last in _settle(out, SETTLE_S / STEP, min_edge) if abs(d) >= min_edge]
 
 
 SETTLE_S = 60         # le Linky envoie une valeur toutes les 7 à 38 s : la fin du pic peut arriver 1 min après
 
 
-def _settle(edges, window):
+def _settle(edges, window, min_edge=100):
     """Appel de courant au démarrage : un pic suivi de près (window) d'une descente plus petite = un seul
     démarrage, compté à sa puissance stable (chauffage soufflant à céramique, moteur…).
     edges : [(début, Δ, fin)] ; window dans la même unité que les temps."""
@@ -284,7 +285,7 @@ def _settle(edges, window):
             n = edges[i + 1]
             if e[1] > 0 and n[1] < 0 and n[0] - e[2] <= window and -n[1] < 0.8 * e[1]:
                 net = e[1] + n[1]
-                if net >= 100:
+                if net >= min(100, min_edge):
                     out.append((e[0], net, n[2]))
                 i += 2
                 continue
@@ -293,11 +294,12 @@ def _settle(edges, window):
     return out
 
 
-def _close(h, m):
-    return abs(m - h) <= max(200, 0.25 * h)
+def _close(h, m, min_edge=EDGE_W):
+    tolerance = 200 if min_edge >= EDGE_W else min(200, max(10, 0.25 * max(h, m)))
+    return abs(m - h) <= max(tolerance, 0.25 * h)
 
 
-def split_session(prof: list[int], min_edge: int = EDGE_W) -> list[tuple[int, list[int]]]:
+def split_session(prof: list[int], min_edge: int = EDGE_W, on_w: float = ON_W) -> list[tuple[int, list[int]]]:
     """Découpe une utilisation en plusieurs appareils si la courbe le montre clairement.
 
     Retourne [(décalage en points, profil)], ou [(0, prof)] si on ne sépare pas.
@@ -312,7 +314,7 @@ def split_session(prof: list[int], min_edge: int = EDGE_W) -> list[tuple[int, li
         rest = [v - own[k] for k, v in enumerate(prof)]
         spans = _pair(rest, min_edge=min_edge)
         if (len(spans) == 1 and spans[0][3] and spans[0][4]
-                and spans[0][2] >= ON_W):
+                and spans[0][2] >= on_w):
             a, b = spans[0][:2]
             if sum(rest[a:b]) >= 0.9 * sum(rest):
                 for k in range(len(own)):
@@ -343,7 +345,8 @@ def split_session(prof: list[int], min_edge: int = EDGE_W) -> list[tuple[int, li
         for a, b, *_ in c["spans"]:
             for k in range(max(a, k0), min(b, k1)):
                 p[k - k0] = round(c["h"])
-        if len(p) >= 2 and max(p) >= ON_W and sum(p) >= 0.1 * total:
+        min_share = 0.01 if on_w < ON_W else 0.1
+        if len(p) >= 2 and max(p) >= on_w and sum(p) >= min_share * total:
             out.append((k0, p))
     return out if len(out) >= 2 else [(0, prof)]
 
@@ -357,7 +360,7 @@ def _pair(prof, closed=True, min_edge=EDGE_W):
             opened.append((k - 1, d, True))
             continue
         m = -d
-        best = min((o for o in opened if _close(o[1], m)), key=lambda o: abs(o[1] - m), default=None)
+        best = min((o for o in opened if _close(o[1], m, min_edge)), key=lambda o: abs(o[1] - m), default=None)
         if best:
             opened.remove(best)
             spans.append((best[0], k - 1, (best[1] + m) / 2, best[2], True))
@@ -365,14 +368,14 @@ def _pair(prof, closed=True, min_edge=EDGE_W):
         pair = None
         for a in range(len(opened)):
             for b in range(a + 1, len(opened)):
-                if _close(opened[a][1] + opened[b][1], m):
+                if _close(opened[a][1] + opened[b][1], m, min_edge):
                     pair = (opened[a], opened[b])
         if pair:   # deux appareils qui s'arrêtent en même temps
             for o in pair:
                 opened.remove(o)
                 spans.append((o[0], k - 1, o[1], o[2], True))
             continue
-        big = max((o for o in opened if o[1] - m >= EDGE_W), key=lambda o: o[1], default=None)
+        big = max((o for o in opened if o[1] - m >= min_edge), key=lambda o: o[1], default=None)
         if big:    # deux appareils démarrés en même temps : un seul s'arrête
             opened[opened.index(big)] = (big[0], big[1] - m, False)
             spans.append((big[0], k - 1, m, False, False))
@@ -395,7 +398,7 @@ def _components(spans):
     return comps
 
 
-def extract_component(prof: list[int], k_at: int, power: float):
+def extract_component(prof: list[int], k_at: int, power: float, min_edge: float = EDGE_W, on_w: float = ON_W):
     """Découpe guidée : sort d'une utilisation mélangée l'appareil désigné par l'utilisateur
     (son saut de démarrage à k_at, sa puissance environ power).
 
@@ -403,7 +406,7 @@ def extract_component(prof: list[int], k_at: int, power: float):
     """
     n = len(prof)
     best, bs = None, None
-    for c in _components(_pair(prof)):
+    for c in _components(_pair(prof, min_edge=min_edge)):
         k0 = min(sp[0] for sp in c["spans"])
         rel = abs(c["h"] - power) / max(c["h"], power)
         if rel > 0.35 or abs(k0 - k_at) > 8:
@@ -422,12 +425,12 @@ def extract_component(prof: list[int], k_at: int, power: float):
         for k in range(max(a, 0), min(b, n)):
             part[k - k0] = h
             rest[k] = max(0, rest[k] - h)
-    if max(part, default=0) < ON_W:
+    if max(part, default=0) < on_w:
         return None
     return k0, part, rest
 
 
-def live_parts(prof: list[int]) -> list[dict]:
+def live_parts(prof: list[int], min_edge: float = EDGE_W) -> list[dict]:
     """Ce qui tourne dans une utilisation encore en cours, appareil par appareil (comme on le lirait à la main).
 
     Chaque montée est associée à la descente de même taille ; les marche/arrêt de même hauteur
@@ -441,11 +444,11 @@ def live_parts(prof: list[int]) -> list[dict]:
         threshold = max(30, level * 0.5)
         cycles = 1 + sum(body[k] >= threshold and body[k - 1] < threshold for k in range(1, len(body)))
         return [{"k0": 0, "k1": len(prof), "h": round(level), "n": cycles,
-                 "running": prof[-1] > threshold, "low": True}] + live_parts(rest)
+                 "running": prof[-1] > threshold, "low": True}] + live_parts(rest, min_edge)
     n = len(prof)
     out = []
-    for c in _components(_pair(prof, closed=False)):
-        if c["h"] < EDGE_W:
+    for c in _components(_pair(prof, closed=False, min_edge=min_edge)):
+        if c["h"] < min_edge:
             continue
         k0 = min(sp[0] for sp in c["spans"])
         k1 = max(sp[1] for sp in c["spans"])
@@ -632,14 +635,14 @@ def track(ts, ps, t0: float, power: float, now: float, pause_max: float, max_s: 
             "last_change": since, "done": done, "end": end, "p": round(power)}
 
 
-def clean_rest(rest: list[int], min_len: int = 3) -> list[int]:
+def clean_rest(rest: list[int], min_len: int = 3, min_level: float = OFF_W) -> list[int]:
     """Après avoir retiré un appareil, efface les miettes (moins de 45 s) laissées à ses démarrages et arrêts."""
     out = list(rest)
     k = 0
     while k < len(out):
-        if out[k] >= OFF_W:
+        if out[k] >= min_level:
             j = k
-            while j < len(out) and out[j] >= OFF_W:
+            while j < len(out) and out[j] >= min_level:
                 j += 1
             if j - k < min_len:
                 for q in range(k, j):
@@ -769,7 +772,8 @@ def _hdiff(a, b):
 def power_scale(a: dict, b: dict) -> float:
     """Écart de puissance « normal » : 8 % (jamais moins de ±120 W : le frigo ou une veille la décalent un peu),
     ou plus pour un appareil dont on a vu qu'il varie (chauffage entre 650 et 860 W) : sa propre dispersion."""
-    return max(0.08 * max(a["P"], b["P"]), 120, 2 * a.get("sP", 0), 2 * b.get("sP", 0))
+    power = max(a["P"], b["P"])
+    return max(0.08 * power, min(120, max(10, 0.25 * power)), 2 * a.get("sP", 0), 2 * b.get("sP", 0))
 
 
 def dist(a: dict, b: dict) -> float:

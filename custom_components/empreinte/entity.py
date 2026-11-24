@@ -8,7 +8,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 
 from .const import DOMAIN
-from .text import display_text
+from .text import display_appliance, display_text
 
 
 def slug(s: str) -> str:
@@ -27,7 +27,7 @@ class ApplianceEntity(Entity):
         g = coord.groups[gid]
         self._attr_unique_id = f"{DOMAIN}_{gid}_{self._suffix or 'running'}"
         self.entity_id = f"{domain}.empreinte_{slug(g['name'])}{'_' + self._suffix if self._suffix else ''}"
-        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, gid)}, name=g["name"] or gid,
+        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, gid)}, name=display_appliance(coord, g["name"]) or gid,
                                             manufacturer="Empreinte", model="Appareil reconnu")
 
     @property
@@ -37,7 +37,7 @@ class ApplianceEntity(Entity):
     @property
     def name(self):
         g = self.appliance
-        return f"{g['name'] if g else self.gid} {display_text(self.coord, self._label)}".strip()
+        return f"{display_appliance(self.coord, g['name']) if g else self.gid} {display_text(self.coord, self._label)}".strip()
 
     @property
     def available(self):

@@ -1,6 +1,27 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { locale, messages, relativeTime, translate } from "../custom_components/empreinte/frontend/i18n.js";
+import { applianceName, applianceNames, applianceSelection, locale, messages, relativeTime, translate } from "../custom_components/empreinte/frontend/i18n.js";
+
+assert.equal(applianceName("it", "Lave-linge"), "Lavatrice");
+assert.equal(applianceName("en", "Lave-vaisselle"), "Dishwasher");
+assert.equal(applianceName("fr", "Lave-linge"), "Lave-linge");
+assert.equal(applianceName("it", "La mia lavatrice"), "La mia lavatrice");
+assert.equal(applianceName("invalid", "Lave-linge"), "Lave-linge");
+for (const [name, translations] of Object.entries(applianceNames)) {
+  assert.equal(translations.length, 2, name);
+  assert.ok(translations.every(Boolean), name);
+}
+const input = { value: "", handlers: {}, addEventListener(event, callback) { this.handlers[event] = callback; }, focus() {} };
+const chip = { dataset: { s: "Lave-linge" } };
+const selectedName = applianceSelection(input, [chip], "it", "Lave-vaisselle");
+assert.equal(input.value, "Lavastoviglie");
+assert.equal(selectedName(), "Lave-vaisselle");
+chip.onclick();
+assert.equal(input.value, "Lavatrice");
+assert.equal(selectedName(), "Lave-linge");
+input.value = "Lavatrice personale";
+input.handlers.input();
+assert.equal(selectedName(), "Lavatrice personale");
 
 assert.equal(translate("fr", "overview"), "Aperçu");
 assert.equal(translate("en", "overview"), "Overview");

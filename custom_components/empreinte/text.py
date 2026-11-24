@@ -1,5 +1,34 @@
 """Display-only translations; identifiers and stored appliance names stay unchanged."""
 
+APPLIANCE_NAMES = {
+    "Douche (chauffe-eau)": ("Shower (water heater)", "Doccia (scaldabagno)"),
+    "Four": ("Oven", "Forno"),
+    "Micro-ondes": ("Microwave", "Forno a microonde"),
+    "Bouilloire": ("Kettle", "Bollitore"),
+    "Frigo": ("Fridge", "Frigorifero"),
+    "Chauffage salle de bain": ("Bathroom heater", "Riscaldamento bagno"),
+    "Lave-linge": ("Washing machine", "Lavatrice"),
+    "Sèche-linge": ("Tumble dryer", "Asciugatrice"),
+    "Lave-vaisselle": ("Dishwasher", "Lavastoviglie"),
+    "Plaques de cuisson": ("Cooktop", "Piano cottura"),
+    "Aspirateur": ("Vacuum cleaner", "Aspirapolvere"),
+    "Fer à repasser": ("Iron", "Ferro da stiro"),
+    "Sèche-cheveux": ("Hair dryer", "Asciugacapelli"),
+    "Grille-pain": ("Toaster", "Tostapane"),
+    "Cafetière": ("Coffee maker", "Macchina del caffè"),
+    "Climatisation": ("Air conditioning", "Climatizzatore"),
+}
+
+
+def display_appliance(coord, name):
+    """Translate built-in names for display, keeping other names unchanged."""
+    language = getattr(coord, "language", "fr")
+    translations = APPLIANCE_NAMES.get(name)
+    if translations and language in ("en", "it"):
+        return translations[0 if language == "en" else 1]
+    return name
+
+
 TEXT = {
     "fr": {
         "not_found": "Introuvable : {item}",

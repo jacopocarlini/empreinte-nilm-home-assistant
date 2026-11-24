@@ -40,7 +40,7 @@ for name in ("EntitySelector", "EntitySelectorConfig", "NumberSelector", "Number
 selector.NumberSelectorMode = types.SimpleNamespace(BOX="box")
 sys.modules["homeassistant.helpers"].selector = selector
 from empreinte import config_flow as F  # noqa: E402
-from empreinte.text import display_text  # noqa: E402
+from empreinte.text import APPLIANCE_NAMES, display_appliance, display_text  # noqa: E402
 
 
 def test_schema_and_save_preserves_shared_plugs():
@@ -53,9 +53,9 @@ def test_schema_and_save_preserves_shared_plugs():
     assert default.kwargs["default"] == "fr"
     flow = F.EmpreinteOptions()
     plugs = [{"entity": "sensor.plug", "names": ["Washer"]}]
-    flow.config_entry = types.SimpleNamespace(options={"shared_plugs": plugs})
+    flow.config_entry = types.SimpleNamespace(options={"shared_plugs": plugs, "detection_w": 50})
     result = asyncio.run(flow.async_step_reglages({"language": "en", "measured": ["sensor.other"]}))
-    assert result["data"] == {"language": "en", "measured": ["sensor.other"], "shared_plugs": plugs}
+    assert result["data"] == {"language": "en", "measured": ["sensor.other"], "shared_plugs": plugs, "detection_w": 50}
     flow.config_entry.options = result["data"]
     result = asyncio.run(flow.async_step_prises({"shared_plug": None, "shared_names": "", "shared_remove": []}))
     assert result["data"]["language"] == "en" and result["data"]["shared_plugs"] == plugs
@@ -94,6 +94,17 @@ def test_display_labels_preserve_user_names():
     assert display_text(coord, "Non identifié") == "Unidentified"
     coord.language = "fr"
     assert display_text(coord, "Non identifié") == "Non identifié"
+    assert display_appliance(coord, "Lave-linge") == "Lave-linge"
+    coord.language = "it"
+    assert display_appliance(coord, "Lave-linge") == "Lavatrice"
+    assert display_appliance(coord, "Lavatrice personale") == "Lavatrice personale"
+    coord.language = "en"
+    assert display_appliance(coord, "Lave-vaisselle") == "Dishwasher"
+    assert {v[0] for v in C.engine.KINDS.values()} <= set(APPLIANCE_NAMES)
+    co = make()
+    co.pending = [{"at": 1000, "p": 1000, "name": "Lave-linge", "maybe": True, "t": 1001}]
+    assert co._pending_for(1000, 1000) == {
+        "name": "peut-être Lave-linge", "raw_name": "Lave-linge", "maybe": True, "t": 1001}
 
 
 def test_sensor_names_keep_identifiers():
@@ -146,6 +157,15 @@ def test_sensor_names_keep_identifiers():
     assert power.name == "Lavatrice personale power" and rest.name == "Unidentified"
     assert line.name == "Mon PC cost" and shared.name == "energy" and shared_running.name == "running"
     assert ids == [(x.entity_id, x._attr_unique_id) for x in (power, running, rest, line, shared, shared_running, button)]
+    coord.groups["g1"]["name"] = "Lave-linge"
+    assert power.name == "Washing machine power"
+    coord.language = "it"
+    assert power.name == "Lavatrice potenza"
+    assert ids == [(x.entity_id, x._attr_unique_id) for x in (power, running, rest, line, shared, shared_running, button)]
+    assert coord.groups["g1"]["name"] == "Lave-linge"
+    builtin = PowerSensor(coord, "g1")
+    assert builtin._attr_device_info["name"] == "Lavatrice"
+    assert builtin.entity_id == "sensor.empreinte_lave_linge_puissance"
 
 
 if __name__ == "__main__":

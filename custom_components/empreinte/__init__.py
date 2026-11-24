@@ -12,7 +12,8 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import DATA_DIR, DOMAIN, PANEL_URL, STATIC_URL, VERSION
+from .const import (CONF_DETECTION_W, CONF_LANGUAGE, DATA_DIR, DOMAIN, LANGUAGES,
+                    MAX_DETECTION_W, MIN_DETECTION_W, PANEL_URL, STATIC_URL, VERSION)
 from .coordinator import Coordinator
 
 PLATFORMS = ["binary_sensor", "button", "sensor"]
@@ -30,7 +31,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN]["http"] = True
         root = os.path.join(os.path.dirname(__file__), "frontend")
         await hass.http.async_register_static_paths([StaticPathConfig(STATIC_URL, root, False)])
-        for cmd in (ws_state, ws_day, ws_action):
+        for cmd in (ws_state, ws_day, ws_action, ws_settings):
             websocket_api.async_register_command(hass, cmd)
 
     # Le numéro de version change dès qu'un fichier de l'interface change : le navigateur recharge tout.
@@ -100,6 +101,20 @@ async def ws_state(hass, connection, msg):
 @websocket_api.async_response
 async def ws_day(hass, connection, msg):
     connection.send_result(msg["id"], await _coord(hass).async_day(msg["day"]))
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "empreinte/settings",
+    vol.Required("language"): vol.In(LANGUAGES),
+    vol.Required("detection_w"): vol.All(int, vol.Range(min=MIN_DETECTION_W, max=MAX_DETECTION_W)),
+})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_settings(hass, connection, msg):
+    coord = _coord(hass)
+    options = {**coord.entry.options, CONF_LANGUAGE: msg["language"], CONF_DETECTION_W: msg["detection_w"]}
+    hass.config_entries.async_update_entry(coord.entry, options=options)
+    connection.send_result(msg["id"])
 
 
 @websocket_api.websocket_command({

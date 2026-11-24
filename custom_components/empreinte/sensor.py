@@ -8,7 +8,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DOMAIN
 from .entity import ApplianceEntity, slug
-from .text import display_text
+from .text import display_appliance, display_text
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -394,7 +394,7 @@ class _Shared:
         self.coord, self.plug, self.app = coord, plug, name
         self._attr_unique_id = f"{DOMAIN}_sh_{slug(plug)}_{slug(name)}_{suffix}"
         self.entity_id = f"sensor.empreinte_prise_{slug(name)}_{suffix}"
-        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, "sh:" + coord.shared.key(plug, name))}, name=name,
+        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, "sh:" + coord.shared.key(plug, name))}, name=display_appliance(coord, name),
                                             manufacturer="Empreinte", model="Prise partagée")
 
     @property

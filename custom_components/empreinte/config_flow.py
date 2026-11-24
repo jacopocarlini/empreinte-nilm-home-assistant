@@ -7,7 +7,7 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
-from .const import (CONF_CLIMATE, CONF_CLIMATE_ENERGY, CONF_EXTRA_LINES, CONF_FRIDGE_KWH, CONF_LANGUAGE, CONF_MEASURED,
+from .const import (CONF_CLIMATE, CONF_CLIMATE_ENERGY, CONF_DETECTION_W, CONF_EXTRA_LINES, CONF_FRIDGE_KWH, CONF_LANGUAGE, CONF_MEASURED,
                     CONF_POWER_ENTITY, CONF_SHARED, DEFAULT_LANGUAGE, DOMAIN)
 
 # Mots qui trahissent le capteur de toute la maison (compteur Linky, Shelly EM, Lixee, Tic…)
@@ -102,7 +102,7 @@ class EmpreinteOptions(config_entries.OptionsFlow):
     async def async_step_reglages(self, user_input=None):
         if user_input is not None:
             # les prises partagées se règlent ailleurs : on les garde telles quelles
-            keep = {CONF_SHARED: self.config_entry.options[CONF_SHARED]} if CONF_SHARED in self.config_entry.options else {}
+            keep = {key: self.config_entry.options[key] for key in (CONF_SHARED, CONF_DETECTION_W) if key in self.config_entry.options}
             return self.async_create_entry(data={**keep, **user_input})
         coord = self.hass.data.get(DOMAIN, {}).get("coord")
         cur = dict(self.config_entry.options)

@@ -79,7 +79,8 @@ Download `empreinte.zip` from the [latest release](https://github.com/nodyxstudi
 
 | Setting | What it does |
 |---|---|
-| **Panel language** | French by default; English and Italian translate navigation, headings and dates. Other text and entity names may still be in French. The settings form follows the Home Assistant language. |
+| **Panel language** | Set in the panel's **Settings** page or the integration options; French is the default. English and Italian also translate built-in appliance names. Other text may still be in French. |
+| **Detection threshold** | Set in the panel's **Settings** page (50–2,000 W; default 350 W). Smaller thresholds can reveal small loads but are more sensitive to noise and overlapping appliances. Changing the threshold reloads the integration and reanalyses retained history; events and labels may change or be lost, including events older than retained samples. Make a backup first. |
 | **Smart plugs that already measure a device** | Their power is subtracted before the analysis, so the PC or TV is never mistaken for something else. |
 | **Air conditioner / heat pump** | Its compressor makes the curve go up and down: Empreinte ignores these small steps instead of inventing appliances. |
 | **Its energy meter** | It then gets its own smoothed line in the daily balance. |
@@ -109,7 +110,7 @@ Everything is computed on your machine. Empreinte sends nothing to the internet:
 
 ## Good to know
 
-- Empreinte primarily detects **starts above 350 W**. A stable 60–180 W plateau immediately after a short spike may also be retained; small appliances without a spike stay in the background. A pause longer than 150 s ends this type of event, and a restart without another spike cannot be detected.
+- Empreinte detects power increases from the configured threshold (350 W by default). A lower threshold can reveal small loads but cannot guarantee individual identification, especially with overlapping appliances, noisy measurements or a running air conditioner. With the default threshold, a stable 60–180 W plateau immediately after a short spike may also be retained. Short interruptions up to 150 s are treated as part of the same event.
 - A plateau after a spike is an **inference**, not proof: a different small appliance might have started at the same time. Existing recorded events are not automatically reanalysed. If you name a group "Fridge", disable the separate fridge estimate to avoid counting the same consumption twice.
 - Low-power plateaus can be named live, but the name is applied when the event ends; dedicated tracking and live running sensors are not guaranteed for them.
 - An appliance on for **less than 30 seconds** is often missed: the meter does not give enough readings.

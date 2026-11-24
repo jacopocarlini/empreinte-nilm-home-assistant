@@ -33,6 +33,8 @@ jobs:
           python tests/test_decalage.py
           python tests/test_cycles_faibles.py
           python tests/test_language.py
+          python tests/test_threshold.py
+          python tests/test_settings_command.py
           python tests/test_fil_principal.py
           python tests/test_reanalyse.py
           python tests/test_classement_zero.py
