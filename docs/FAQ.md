@@ -34,7 +34,7 @@ C'est le cas le plus difficile : même puissance, souvent en même temps. Mettez
 
 ### Pourquoi « Non identifié » est si gros ?
 
-Il contient tout ce qui ne fait pas un saut de plus de 350 W : télé, box, lampes, chargeurs, veilles, frigo… Pour le réduire : indiquez la consommation du frigo, ajoutez des compteurs estimés (Powercalc) dans les réglages, et nommez les appareils que vous reconnaissez.
+Il contient notamment les appareils dont le saut reste sous le seuil configuré (350 W par défaut). Le panneau **Paramètres** permet de choisir ce seuil entre 10 et 2 000 W. Un seuil bas peut aussi détecter du bruit ; il ne garantit pas l'identification des petits appareils. Le modifier relance l'analyse des mesures conservées : des événements et réponses peuvent changer ou disparaître. Pour réduire le fond : indiquez la consommation du frigo, ajoutez des compteurs estimés (Powercalc) dans les réglages, et nommez les appareils que vous reconnaissez.
 
 ### Est-ce que ça ralentit Home Assistant ?
 
@@ -58,7 +58,7 @@ Tout se corrige dans **Appareils** : renommer, supprimer l'appareil, le fusionne
 
 ### L'interface est en français, et en anglais ?
 
-Les écrans de réglage sont en français et en anglais ; le panneau Empreinte est pour l'instant en français. Une traduction est la bienvenue : voir [CONTRIBUTING.md](../CONTRIBUTING.md).
+Le panneau et les réglages sont disponibles en français, anglais et italien. Choisissez la langue dans le panneau **Paramètres** ou les options de l'intégration. Vos noms personnalisés sont conservés.
 
 ### Une autre question ?
 

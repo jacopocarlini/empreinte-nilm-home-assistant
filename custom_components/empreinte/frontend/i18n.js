@@ -81,7 +81,7 @@ export const messages = {
     introTitle: "Bienvenue dans Empreinte",
     introDescription: "Empreinte reconnaît les appareils de la maison à partir de la seule courbe de consommation. Il ne connaît pas encore les tiens : il apprend avec toi, en quelques jours.",
     introDetect: "Il repère", introName: "Tu nommes", introRecognise: "Il reconnaît", introValidate: "Tu valides",
-    introDetectText: "Chaque démarrage de plus de 350 W est noté : sa puissance, sa durée, sa forme. Les utilisations qui se ressemblent forment des « découvertes ».",
+    introDetectText: "Chaque démarrage atteignant le seuil configuré ({threshold} W) est noté : sa puissance, sa durée, sa forme. Les utilisations qui se ressemblent forment des « découvertes ».",
     introNameText: "Dans l'Aperçu, nomme une utilisation en cours ou passée. Si l'appareil n'est pas dans la liste, écris son nom pour le créer.",
     introRecogniseText: "Après 2 ou 3 réponses par appareil, il apprend à le reconnaître et affiche sa certitude. Tu peux corriger les erreurs, renommer, supprimer ou annuler.",
     introValidateText: "Valider crée ses capteurs et l'ajoute au tableau Énergie. Rien n'y est ajouté sans ton clic.",
@@ -137,7 +137,7 @@ export const messages = {
     introTitle: "Welcome to Empreinte",
     introDescription: "Empreinte recognises household appliances from the power curve alone. It learns about yours with your help over a few days.",
     introDetect: "Detect", introName: "Name", introRecognise: "Recognise", introValidate: "Validate",
-    introDetectText: "Every start above 350 W is recorded with its power, duration and shape. Similar uses form discoveries.",
+    introDetectText: "Every start reaching the configured threshold ({threshold} W) is recorded with its power, duration and shape. Similar uses form discoveries.",
     introNameText: "In Overview, name a current or past use. If the appliance is not listed, enter its name to create it.",
     introRecogniseText: "After 2 or 3 answers per appliance, it learns to recognise it and displays its confidence. You can correct mistakes, rename, delete or undo.",
     introValidateText: "Validation creates sensors and adds the appliance to the Energy dashboard. Nothing is added without your approval.",
@@ -193,7 +193,7 @@ export const messages = {
     introTitle: "Benvenuto in Empreinte",
     introDescription: "Empreinte riconosce i dispositivi domestici dalla sola curva di potenza. Impara a conoscere i tuoi con il tuo aiuto in alcuni giorni.",
     introDetect: "Rileva", introName: "Assegna un nome", introRecognise: "Riconosce", introValidate: "Conferma",
-    introDetectText: "Ogni avvio oltre 350 W viene registrato con potenza, durata e forma. Le attivazioni simili formano le scoperte.",
+    introDetectText: "Ogni avvio che raggiunge la soglia configurata ({threshold} W) viene registrato con potenza, durata e forma. Le attivazioni simili formano le scoperte.",
     introNameText: "Nella Panoramica, assegna un nome a un'attivazione in corso o passata. Se il dispositivo non è nell'elenco, scrivi il suo nome per crearlo.",
     introRecogniseText: "Dopo 2 o 3 risposte per dispositivo, impara a riconoscerlo e mostra il grado di certezza. Puoi correggere gli errori, rinominare, eliminare o annullare.",
     introValidateText: "La conferma crea i sensori e aggiunge il dispositivo alla dashboard Energia. Nulla viene aggiunto senza la tua approvazione.",
@@ -416,7 +416,7 @@ Object.assign(messages.fr, {
   resembles: "Ressemble à", noIdea: "Pas encore d'idée : dis-moi ce que c'est",
   times: "fois", lastSevenDays: "sur 7 j", usesToCheck: "à vérifier",
   discoveriesDescription: "Le programme regroupe tout seul les utilisations qui se ressemblent. Toi, tu dis juste ce que c'est.",
-  discoverDetect: "chaque appareil qui s'allume (plus de 350 W d'un coup)",
+  discoverDetect: "chaque appareil qui s'allume (un saut d'au moins {threshold} W)",
   discoverGroup: "Il regroupe", discoverGroupDescription: "par puissance, durée, forme de courbe et heure",
   discoverName: "le groupe, et tu sors ce qui n'a rien à y faire",
   discoverRecognise: "l'appareil tout seul et crée ses capteurs",
@@ -584,7 +584,7 @@ Object.assign(messages.en, {
   resembles: "Looks like", noIdea: "No suggestion yet: tell me what it is",
   times: "times", lastSevenDays: "last 7 days", usesToCheck: "to check",
   discoveriesDescription: "The programme groups similar uses automatically. You identify them.",
-  discoverDetect: "each appliance that starts (a jump of more than 350 W)",
+  discoverDetect: "each appliance that starts (a jump of at least {threshold} W)",
   discoverGroup: "Group", discoverGroupDescription: "by power, duration, curve shape and time",
   discoverName: "the group and remove uses that do not belong",
   discoverRecognise: "the appliance automatically and create its sensors",
@@ -752,7 +752,7 @@ Object.assign(messages.it, {
   resembles: "Assomiglia a", noIdea: "Nessun suggerimento: indica di cosa si tratta",
   times: "volte", lastSevenDays: "ultimi 7 giorni", usesToCheck: "da verificare",
   discoveriesDescription: "Il programma raggruppa automaticamente le attivazioni simili. Tu indichi di cosa si tratta.",
-  discoverDetect: "ogni dispositivo che si accende (un salto superiore a 350 W)",
+  discoverDetect: "ogni dispositivo che si accende (un salto di almeno {threshold} W)",
   discoverGroup: "Raggruppa", discoverGroupDescription: "per potenza, durata, forma della curva e orario",
   discoverName: "il gruppo e rimuovi le attivazioni che non gli appartengono",
   discoverRecognise: "il dispositivo automaticamente e crea i suoi sensori",
@@ -839,6 +839,31 @@ Object.assign(messages.it, {
   renameCategory: "Rinomina categoria", categoryRenamed: "Categoria rinominata",
   categoryDeleted: "« {name} » eliminata (i dispositivi mantengono il loro nome)",
   categoryCreated: "Categoria « {name} » creata", energyRestored: "Ripristinato nella dashboard Energia",
+});
+
+Object.assign(messages.fr, {
+  settings: "Paramètres", settingsDescription: "Choisis la langue et la sensibilité de détection.",
+  settingsLanguage: "Langue", settingsThreshold: "Variation minimale de puissance",
+  settingsThresholdHelp: "Un seuil bas peut détecter de petites charges, mais aussi du bruit et des appareils superposés. L'identification n'est pas garantie.",
+  settingsHistoryWarning: "Modifier le seuil relance l'analyse de l'historique disponible. Les événements et réponses peuvent changer ou disparaître, notamment si les mesures anciennes ne sont plus conservées.",
+  settingsSaved: "Paramètres enregistrés. L'intégration se recharge.",
+  settingsInvalidThreshold: "Saisis un nombre entier entre 10 et 2 000 W.",
+});
+Object.assign(messages.en, {
+  settings: "Settings", settingsDescription: "Choose the language and detection sensitivity.",
+  settingsLanguage: "Language", settingsThreshold: "Minimum power change",
+  settingsThresholdHelp: "A lower threshold can detect small loads, but also noise and overlapping appliances. Identification is not guaranteed.",
+  settingsHistoryWarning: "Changing the threshold reruns analysis of the available history. Events and answers may change or disappear, especially if older measurements are no longer retained.",
+  settingsSaved: "Settings saved. The integration is reloading.",
+  settingsInvalidThreshold: "Enter a whole number between 10 and 2,000 W.",
+});
+Object.assign(messages.it, {
+  settings: "Impostazioni", settingsDescription: "Scegli la lingua e la sensibilità di rilevamento.",
+  settingsLanguage: "Lingua", settingsThreshold: "Variazione minima di potenza",
+  settingsThresholdHelp: "Una soglia più bassa può rilevare piccoli carichi, ma anche rumore e dispositivi sovrapposti. L'identificazione non è garantita.",
+  settingsHistoryWarning: "Modificare la soglia riavvia l'analisi dello storico disponibile. Eventi e risposte possono cambiare o scomparire, soprattutto se le misurazioni più vecchie non sono più conservate.",
+  settingsSaved: "Impostazioni salvate. L'integrazione si sta ricaricando.",
+  settingsInvalidThreshold: "Inserisci un numero intero tra 10 e 2.000 W.",
 });
 
 export function locale(language) {

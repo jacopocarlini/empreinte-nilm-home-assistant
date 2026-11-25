@@ -4,7 +4,7 @@ Pour les curieux et pour ceux qui veulent modifier le programme. Pour l'utiliser
 
 ## L'algorithme, étape par étape
 
-1. **Découpage** (`engine.segment`) : chaque montée de plus de 350 W au-dessus du fond permanent ouvre une utilisation. Le fond est le bas de la courbe sur les 15 dernières minutes calmes ; celui d'une utilisation est le niveau juste avant son saut.
+1. **Découpage** (`engine.segment`) : chaque montée atteignant le seuil configuré (350 W par défaut) au-dessus du fond permanent ouvre une utilisation. Le fond est le bas de la courbe sur les 15 dernières minutes calmes ; celui d'une utilisation est le niveau juste avant son saut. Le panneau Paramètres permet de choisir un entier entre 10 et 2 000 W. Le changement relance l'analyse des mesures conservées et peut modifier ou supprimer des événements et réponses.
 2. **Résumé** (`engine.features`) : puissance du palier de départ, durée, part du temps allumé, nombre de marche/arrêt, forme (stable, paliers, cycles), heure.
 3. **Séparation** (`engine.split_session`) : quand plusieurs appareils tournent ensemble, chaque montée est associée à la descente de même taille. On ne sépare que si c'est net.
 4. **Recollage** (`engine.should_stitch`) : un appareil qui reprend dans les 6 minutes avec la même puissance (thermostat) reste une seule utilisation.
@@ -76,6 +76,6 @@ sur votre propre maison, rejouez votre historique dans `dev/harness.html` (branc
 ## Limites connues
 
 - Le Linky donne une valeur toutes les 7 à 38 s : un appareil allumé moins de 30 s est invisible.
-- Les petits appareils (moins de 350 W) restent dans le fond permanent.
+- Les appareils sous le seuil configuré restent dans le fond permanent. Abaisser le seuil augmente aussi la sensibilité au bruit et ne garantit pas l'identification.
 - Le capteur de puissance du Linky est souvent en VA (puissance apparente) : les kWh affichés par Empreinte sont un peu au-dessus des vrais.
 - Des plaques à induction qui changent souvent de puissance, en même temps que le four, restent le cas le plus difficile.

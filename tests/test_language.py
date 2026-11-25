@@ -53,12 +53,13 @@ def test_schema_and_save_preserves_shared_plugs():
     assert default.kwargs["default"] == "fr"
     flow = F.EmpreinteOptions()
     plugs = [{"entity": "sensor.plug", "names": ["Washer"]}]
-    flow.config_entry = types.SimpleNamespace(options={"shared_plugs": plugs})
+    flow.config_entry = types.SimpleNamespace(options={"shared_plugs": plugs, "detection_w": 75})
     result = asyncio.run(flow.async_step_reglages({"language": "en", "measured": ["sensor.other"]}))
-    assert result["data"] == {"language": "en", "measured": ["sensor.other"], "shared_plugs": plugs}
+    assert result["data"] == {"language": "en", "measured": ["sensor.other"], "shared_plugs": plugs, "detection_w": 75}
     flow.config_entry.options = result["data"]
     result = asyncio.run(flow.async_step_prises({"shared_plug": None, "shared_names": "", "shared_remove": []}))
     assert result["data"]["language"] == "en" and result["data"]["shared_plugs"] == plugs
+    assert result["data"]["detection_w"] == 75
 
 
 def test_payload_and_fallback():

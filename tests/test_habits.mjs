@@ -35,6 +35,11 @@ hs = findHabits(evs, dayOf, 3, named);
 check("Deux appareils nommés à la même heure donnent deux habitudes distinctes",
   hs.length === 2 && hs.every(h => h.ids.every(id => evs.find(e => e.id === id).gid === h.gid)), `(${hs.map(h => h.gid)})`);
 
+const smallEvents = [0, 1, 2].map(d => ({ id: `s${d}`, start: at(d, 9, 0), p: 75, dur: 300, gid: null }));
+assert.equal(findHabits(smallEvents, dayOf, 3, named).length, 0);
+assert.equal(findHabits(smallEvents, dayOf, 3, named, 75).length, 1);
+assert.equal(findHabits(smallEvents, dayOf, 3, named, 76).length, 0);
+
 for (const [hour, fr, en, it] of [
   [0, "la nuit", "at night", "di notte"],
   [5, "le matin", "in the morning", "di mattina"],

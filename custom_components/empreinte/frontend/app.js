@@ -87,6 +87,7 @@ async function ensureDay(d) {
 
 // ---------- Icônes
 const IC = {
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
   logo: '<path d="M3 12h3l2.5-6 4 12 2.5-6H21"/>',
   home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   spark: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/>',
@@ -547,7 +548,7 @@ function validateModal(gid) {
 }
 
 // ---------- Navigation
-const PAGES = [["apercu", "overview", "home"], ["decouvertes", "discoveries", "spark"], ["habitudes", "habits", "clock"], ["carte", "map", "map"], ["appareils", "appliances", "zap"], ["rapport", "report", "report"]];
+const PAGES = [["apercu", "overview", "home"], ["decouvertes", "discoveries", "spark"], ["habitudes", "habits", "clock"], ["carte", "map", "map"], ["appareils", "appliances", "zap"], ["rapport", "report", "report"], ["parametres", "settings", "settings"]];
 // Navigation interne : HA affiche le panneau dans une iframe où les liens « # » ne marchent pas.
 let CUR = "#/apercu";
 function go(h) {
@@ -714,7 +715,7 @@ function pageDecouvertes() {
   return `
   <div class="page-h"><div><h1>${tr("discoveries")}</h1><p class="sub">${tr("discoveriesDescription")}</p></div></div>
   <div class="card"><div class="how">
-    <div><span class="n">1</span><span><b>${tr("introDetect")}</b>${tr("discoverDetect")}</span></div>
+    <div><span class="n">1</span><span><b>${tr("introDetect")}</b>${tr("discoverDetect", { threshold: S.status.detection_w ?? 350 })}</span></div>
     <div><span class="n">2</span><span><b>${tr("discoverGroup")}</b>${tr("discoverGroupDescription")}</span></div>
     <div><span class="n">3</span><span><b>${tr("introName")}</b>${tr("discoverName")}</span></div>
     <div><span class="n">4</span><span><b>${tr("introRecognise")}</b>${tr("discoverRecognise")}</span></div>
@@ -849,7 +850,7 @@ function mountGroupe(gid, q) {
 // ---------- Page : Habitudes
 const cap = s => s[0].toUpperCase() + s.slice(1);
 function pageHabitudes() {
-  const hs = findHabits(EVENTS, dayOf, NDAYS, gid => !!(G(gid) && G(gid).name));
+  const hs = findHabits(EVENTS, dayOf, NDAYS, gid => !!(G(gid) && G(gid).name), S.status.detection_w ?? 350);
   // ce que tu as déjà nommé se range en bas : seules les habitudes encore inconnues restent en grand
   const known = hs.filter(hb => G(hb.gid) && G(hb.gid).name), todo = hs.filter(hb => !(G(hb.gid) && G(hb.gid).name));
   const perHour = Array(24).fill(0); EVENTS.forEach(e => { if (dayOf(e.start) >= 0) perHour[new Date(e.start).getHours()]++; });
@@ -1115,6 +1116,49 @@ function mountRapport() {
   $$("#heat i[data-l]").forEach(c => { if (c.dataset.v === "") return; c.onpointerenter = ev => showTip(ev, `<div class="t">${esc(c.dataset.l)}</div><div class="r"><span>${tr("reportConsumed")}</span><b>${fmtKwh(+c.dataset.v)}</b></div>`); c.onpointermove = moveTip; c.onpointerleave = hideTip; });
 }
 
+function pageSettings() {
+  const threshold = S.status.detection_w ?? 350;
+  return `<div class="page-h"><div><h1>${tr("settings")}</h1><p class="sub">${tr("settingsDescription")}</p></div></div>
+    <form class="card stack" id="settings-form" style="max-width:640px;gap:14px">
+      <label for="settings-language">${tr("settingsLanguage")}</label>
+      <select class="field" id="settings-language">
+        ${[["fr", "Français"], ["en", "English"], ["it", "Italiano"]].map(([value, label]) => `<option value="${value}" ${language === value ? "selected" : ""}>${label}</option>`).join("")}
+      </select>
+      <label for="settings-threshold">${tr("settingsThreshold")} (W)</label>
+      <input class="field" id="settings-threshold" type="number" min="10" max="2000" step="1" required value="${esc(threshold)}">
+      <p class="sub">${tr("settingsThresholdHelp")}</p>
+      <p class="sub">${tr("settingsHistoryWarning")}</p>
+      <div><button class="btn primary" type="submit">${tr("save")}</button></div>
+      <div id="settings-result" role="status"></div>
+    </form>`;
+}
+
+function mountSettings() {
+  $("#settings-form").onsubmit = async e => {
+    e.preventDefault();
+    const form = e.currentTarget, button = form.querySelector("button");
+    const selected = $("#settings-language", form).value;
+    const raw = $("#settings-threshold", form).value, threshold = Number(raw);
+    if (!raw || !Number.isInteger(threshold) || threshold < 10 || threshold > 2000) {
+      $("#settings-result", form).textContent = tr("settingsInvalidThreshold");
+      return;
+    }
+    button.disabled = true;
+    try {
+      await call({ type: "empreinte/settings", language: selected, detection_w: threshold });
+      setLanguage(selected);
+      S.status.language = selected;
+      S.status.detection_w = threshold;
+      render();
+      $("#settings-result").textContent = tr("settingsSaved");
+    } catch (err) {
+      $("#settings-result", form).textContent = tr("error") + ": " + (err.message || err.code || String(err));
+    } finally {
+      button.disabled = false;
+    }
+  };
+}
+
 // ---------- Rendu
 let renderSeq = 0;
 async function render() {
@@ -1152,6 +1196,7 @@ async function render() {
     if ($("#b-cat-new")) $("#b-cat-new").onclick = () => nameModal(tr("createCategory"), "", n => act({ action: "cat_create", name: n }, tr("categoryCreated", { name: n })));
   }
   else if (page === "rapport") { v.innerHTML = pageRapport(); mountRapport(); }
+  else if (page === "parametres") { v.innerHTML = pageSettings(); mountSettings(); }
   else { v.innerHTML = pageApercu(); mountApercu(); }
   $$("[data-go]", v).forEach(el => el.addEventListener("click", e => { if (e.target.closest("button,a,input")) return; go(el.dataset.go); }));
 }
@@ -1178,7 +1223,7 @@ function introModal() {
   const step = (n, t, d) => `<div style="display:flex;gap:12px;margin-top:14px"><div class="gicon" style="background:var(--good);flex:none;color:#fff;font-weight:700">${n}</div><div><b>${t}</b><p class="sub" style="font-size:13px">${d}</p></div></div>`;
   openModal(`<h2>${tr("introTitle")}</h2>
     <p class="sub">${tr("introDescription")}</p>
-    ${step(1, tr("introDetect"), tr("introDetectText"))}
+    ${step(1, tr("introDetect"), tr("introDetectText", { threshold: S.status.detection_w ?? 350 }))}
     ${step(2, tr("introName"), tr("introNameText"))}
     ${step(3, tr("introRecognise"), tr("introRecogniseText"))}
     ${step(4, tr("introValidate"), tr("introValidateText"))}
@@ -1211,7 +1256,7 @@ export function start(h) {
   }).catch(err => { S.error = err.message || err.code || String(err); render(); });
   // Mise à jour discrète toutes les minutes (sauf si l'utilisateur est en train de sélectionner)
   setInterval(async () => {
-    if (document.hidden || S.sel.size || $(".modal-back") || menuEl) return;
+    if (document.hidden || S.sel.size || $(".modal-back") || menuEl || route().page === "parametres") return;
     try { await refresh(); const y = window.scrollY; await render(); window.scrollTo(0, y); } catch (e) { }
   }, 60e3);
   return {

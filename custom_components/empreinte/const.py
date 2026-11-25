@@ -1,9 +1,13 @@
 """Constantes d'Empreinte."""
 
 DOMAIN = "empreinte"
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 CONF_POWER_ENTITY = "power_entity"        # la puissance de toute la maison (W) : le seul réglage obligatoire
 CONF_LANGUAGE = "language"
+CONF_DETECTION_W = "detection_w"
+DEFAULT_DETECTION_W = 350
+MIN_DETECTION_W = 10
+MAX_DETECTION_W = 2000
 LANGUAGES = ("fr", "en", "it")
 DEFAULT_LANGUAGE = "fr"
 # Réglages facultatifs (modifiables à tout moment : Paramètres → Appareils et services → Empreinte → Configurer)

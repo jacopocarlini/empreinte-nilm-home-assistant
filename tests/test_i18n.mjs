@@ -52,6 +52,65 @@ assert.equal(translate("it", "trackingLabel", { name: "Lavatrice <test>" }), "«
 assert.equal(translate("en", "expectedAt", { time: "14:30" }), "Expected to finish at 14:30");
 assert.equal(translate("en", "expectedAt"), "Expected to finish at {time}");
 const source = await readFile(new URL("../custom_components/empreinte/frontend/app.js", import.meta.url), "utf8");
+const settingsPage = source.slice(source.indexOf("function pageSettings()"), source.indexOf("// ---------- Rendu"));
+for (const language of ["fr", "en", "it"]) {
+  const button = { disabled: false }, result = { textContent: "" };
+  const form = { querySelector: () => button };
+  const fields = {
+    "#settings-form": form,
+    "#settings-language": { value: language },
+    "#settings-threshold": { value: "75" },
+    "#settings-result": result,
+  };
+  const sent = [];
+  let renders = 0;
+  const context = {
+    S: { status: { detection_w: 75 } }, language,
+    esc: String, tr: (key, values) => translate(context.language, key, values),
+    $: selector => fields[selector],
+    call: async msg => { assert.equal(button.disabled, true); sent.push(JSON.parse(JSON.stringify(msg))); },
+    setLanguage: selected => { context.language = selected; },
+    render: () => { renders++; },
+  };
+  runInNewContext(settingsPage, context);
+  const page = context.pageSettings();
+  assert.ok(page.includes(`value="${language}" selected`));
+  assert.ok(page.includes('required value="75"'));
+  for (const key of ["settings", "settingsLanguage", "settingsThreshold", "settingsHistoryWarning"]) {
+    assert.ok(page.includes(translate(language, key)));
+  }
+  context.mountSettings();
+  const submit = () => form.onsubmit({ preventDefault() {}, currentTarget: form });
+  for (const value of ["", "9", "2001", "75.5", "invalid"]) {
+    fields["#settings-threshold"].value = value;
+    await submit();
+    assert.equal(result.textContent, translate(language, "settingsInvalidThreshold"));
+  }
+  assert.equal(sent.length, 0);
+  for (const value of ["10", "75", "2000"]) {
+    fields["#settings-threshold"].value = value;
+    await submit();
+    assert.deepEqual(sent.at(-1), { type: "empreinte/settings", language, detection_w: Number(value) });
+    assert.equal(context.S.status.detection_w, Number(value));
+    assert.equal(result.textContent, translate(language, "settingsSaved"));
+    assert.equal(button.disabled, false);
+  }
+  assert.equal(renders, 3);
+  fields["#settings-language"].value = "it";
+  await submit();
+  assert.equal(context.language, "it");
+  assert.equal(context.S.status.language, "it");
+  assert.equal(result.textContent, translate("it", "settingsSaved"));
+  context.call = async () => { throw new Error("Permission denied"); };
+  await submit();
+  assert.ok(result.textContent.includes("Permission denied"));
+  assert.equal(button.disabled, false);
+  for (const key of ["discoverDetect", "introDetectText"]) {
+    const text = translate(language, key, { threshold: 75 });
+    assert.ok(text.includes("75"));
+    assert.ok(!text.includes("350"));
+  }
+}
 const devicePage = source.slice(source.indexOf("function stateOf("), source.indexOf("// ---------- Page : Rapport"));
 for (const language of ["fr", "en", "it"]) {
   const now = Date.now() / 1000;
@@ -93,7 +152,7 @@ for (const language of ["fr", "en", "it"]) {
   const active = runInNewContext(`${devicePage}\npageAppareils()`, context);
   assert.ok(active.includes(translate(language, "energyVisible")));
 }
-const reportPage = source.slice(source.indexOf("function reportDays()"), source.indexOf("// ---------- Rendu"));
+const reportPage = source.slice(source.indexOf("function reportDays()"), source.indexOf("function pageSettings()"));
 for (const language of ["fr", "en", "it"]) {
   const groups = [
     { id: "new", status: "nouveau", letter: "A", created: Date.now() / 1000, hyp: "Lave-linge" },

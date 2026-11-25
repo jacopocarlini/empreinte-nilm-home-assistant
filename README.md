@@ -45,7 +45,7 @@ Empreinte (French for *footprint*) watches the power of your **whole house** (a 
 
 ## How it works
 
-1. **Detect.** Every sudden rise of more than 350 W means something switched on. Empreinte records its power, duration and shape: steady (kettle), thermostat (oven), steps (hob).
+1. **Detect.** Sudden rises reaching the configured threshold (350 W by default) indicate something switched on. Empreinte records its power, duration and shape: steady (kettle), thermostat (oven), steps (hob).
 2. **Group.** Similar switch-ons become "discoveries": "about 2 kW, 3 minutes, several times a day".
 3. **You name.** One click: "it's the kettle". You can also say live "this is the dishwasher right now", and it tracks it to the end, even among other appliances.
 4. **Recognise.** It shows its confidence as a percentage. When it is sure enough, **you** decide to add it to the Energy dashboard.
@@ -79,7 +79,8 @@ Download `empreinte.zip` from the [latest release](https://github.com/nodyxstudi
 
 | Setting | What it does |
 |---|---|
-| **Panel language** | French by default; French, English and Italian are available in the integration options. The panel and built-in entity labels follow this choice; your custom names are preserved. The settings form follows the Home Assistant language. |
+| **Panel language** | French by default; French, English and Italian are available in the panel's Settings page or integration options. The panel and built-in entity labels follow this choice; your custom names are preserved. |
+| **Detection threshold** | In the panel's Settings page, administrators can choose an integer from 10 to 2,000 W (default 350 W), relative to the preceding background level. Changing it reloads the integration and reanalyses retained history: events and answers may change or disappear, especially if older samples are no longer available. |
 | **Smart plugs that already measure a device** | Their power is subtracted before the analysis, so the PC or TV is never mistaken for something else. |
 | **Air conditioner / heat pump** | Its compressor makes the curve go up and down: Empreinte ignores these small steps instead of inventing appliances. |
 | **Its energy meter** | It then gets its own smoothed line in the daily balance. |
@@ -109,7 +110,7 @@ Everything is computed on your machine. Empreinte sends nothing to the internet:
 
 ## Good to know
 
-- Empreinte detects **starts above 350 W**. Small loads (chargers, lamps, routers) stay in the always-on background.
+- Empreinte detects **starts reaching the configured threshold**. Loads below it stay in the always-on background. Lowering the threshold may detect smaller loads, but also noise and overlapping appliances; identification is not guaranteed.
 - An appliance on for **less than 30 seconds** is often missed: the meter does not give enough readings.
 - It needs **a few uses** of each appliance before being really sure.
 - The hardest case: two appliances of similar power at the same time (oven and hob). That is what categories are for.
