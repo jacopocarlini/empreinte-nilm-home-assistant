@@ -1267,7 +1267,7 @@ async function render() {
   else if (page === "rapport") { v.innerHTML = pageRapport(); mountRapport(); }
   else if (page === "parametres") { v.innerHTML = pageSettings(); mountSettings(); }
   else { v.innerHTML = pageApercu(); mountApercu(); }
-  $$("[data-go]", v).forEach(el => el.addEventListener("click", e => { if (e.target.closest("button,a,input")) return; go(el.dataset.go); }));
+  $$("[data-go]", v).forEach(el => el.addEventListener("click", e => { if (e.target.closest("button,a,input") && !el.matches("button[data-go]")) return; go(el.dataset.go); }));
 }
 function redrawCharts() {
   if ($("#daychart")) drawDay($("#daychart"));
