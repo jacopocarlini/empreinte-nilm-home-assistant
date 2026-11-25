@@ -204,7 +204,10 @@ export const messages = {
 
 Object.assign(messages.fr, {
   reportPeriod: "Du {from} au {to}. Ce sont des hypothèses, pas des certitudes : à toi de confirmer.",
-  reportPrint: "Imprimer", reportConsumption: "Consommation", reportCostDays: "{cost} sur {days} {unit}",
+  reportPrint: "Imprimer", exportMeasurements: "Exporter les mesures", exportMeasurementsHelp: "Télécharge les valeurs brutes conservées par Empreinte, avec leur horodatage UTC. Les mesures disponibles sont conservées jusqu'à 120 jours.",
+  exportFrom: "Du", exportTo: "Au (inclus)", exportDownload: "Télécharger le CSV", exportInvalidRange: "La date de début doit précéder ou égaler la date de fin.",
+  exportProgress: "Récupération du jour {current} sur {total}…", exportNoData: "Aucune mesure conservée sur cette période.", exportDone: "{count} mesures exportées.",
+  reportConsumption: "Consommation", reportCostDays: "{cost} sur {days} {unit}",
   reportAttributed: "Attribuée à un appareil nommé",
   reportAlwaysOnFoot: "{energy} · {cost} consommés par ce qui ne s'éteint jamais",
   reportGroupsToConfirm: "Groupes à confirmer", reportReadyCount: "{count} prêt(s) à devenir capteur", reportNoneReady: "aucun prêt à valider",
@@ -228,7 +231,10 @@ Object.assign(messages.fr, {
 });
 Object.assign(messages.en, {
   reportPeriod: "From {from} to {to}. These are hypotheses, not certainties: please confirm them.",
-  reportPrint: "Print", reportConsumption: "Consumption", reportCostDays: "{cost} over {days} {unit}",
+  reportPrint: "Print", exportMeasurements: "Export measurements", exportMeasurementsHelp: "Download the raw readings retained by Empreinte, with UTC timestamps. Measurements are kept for up to 120 days.",
+  exportFrom: "From", exportTo: "To (inclusive)", exportDownload: "Download CSV", exportInvalidRange: "The start date must be on or before the end date.",
+  exportProgress: "Fetching day {current} of {total}…", exportNoData: "No retained measurements for this period.", exportDone: "{count} measurements exported.",
+  reportConsumption: "Consumption", reportCostDays: "{cost} over {days} {unit}",
   reportAttributed: "Attributed to a named appliance",
   reportAlwaysOnFoot: "{energy} · {cost} consumed by devices that stay on",
   reportGroupsToConfirm: "Groups to confirm", reportReadyCount: "{count} ready for sensors", reportNoneReady: "none ready to validate",
@@ -252,7 +258,10 @@ Object.assign(messages.en, {
 });
 Object.assign(messages.it, {
   reportPeriod: "Dal {from} al {to}. Sono ipotesi, non certezze: puoi confermarle tu.",
-  reportPrint: "Stampa", reportConsumption: "Consumo", reportCostDays: "{cost} in {days} {unit}",
+  reportPrint: "Stampa", exportMeasurements: "Esporta misure", exportMeasurementsHelp: "Scarica i valori grezzi conservati da Empreinte con timestamp UTC. Le misure sono conservate fino a 120 giorni.",
+  exportFrom: "Dal", exportTo: "Al (incluso)", exportDownload: "Scarica CSV", exportInvalidRange: "La data iniziale deve precedere o coincidere con quella finale.",
+  exportProgress: "Recupero del giorno {current} di {total}…", exportNoData: "Nessuna misura conservata nel periodo selezionato.", exportDone: "{count} misure esportate.",
+  reportConsumption: "Consumo", reportCostDays: "{cost} in {days} {unit}",
   reportAttributed: "Attribuito a un dispositivo nominato",
   reportAlwaysOnFoot: "{energy} · {cost} consumati dai dispositivi sempre accesi",
   reportGroupsToConfirm: "Gruppi da confermare", reportReadyCount: "{count} pronti per creare i sensori", reportNoneReady: "nessuno pronto da confermare",
@@ -843,6 +852,8 @@ Object.assign(messages.it, {
 
 Object.assign(messages.fr, {
   settings: "Paramètres", settingsDescription: "Choisis la langue et la sensibilité de détection.",
+  deleteAppliance: "Supprimer l'appareil", deleteApplianceTitle: "Supprimer « {name} » ?",
+  deleteApplianceDescription: "L'appareil et ses capteurs seront supprimés de Home Assistant, pas seulement désactivés. Ses utilisations resteront disponibles, sans appareil attribué. Les statistiques historiques de Home Assistant seront conservées.",
   settingsLanguage: "Langue", settingsThreshold: "Variation minimale de puissance",
   settingsThresholdHelp: "Un seuil bas peut détecter de petites charges, mais aussi du bruit et des appareils superposés. L'identification n'est pas garantie.",
   settingsHistoryWarning: "Modifier le seuil relance l'analyse de l'historique disponible. Les événements et réponses peuvent changer ou disparaître, notamment si les mesures anciennes ne sont plus conservées.",
@@ -851,6 +862,8 @@ Object.assign(messages.fr, {
 });
 Object.assign(messages.en, {
   settings: "Settings", settingsDescription: "Choose the language and detection sensitivity.",
+  deleteAppliance: "Delete appliance", deleteApplianceTitle: "Delete “{name}”?",
+  deleteApplianceDescription: "The appliance and its sensors will be removed from Home Assistant, not just disabled. Its uses will remain available as unassigned. Historical Home Assistant statistics will be retained.",
   settingsLanguage: "Language", settingsThreshold: "Minimum power change",
   settingsThresholdHelp: "A lower threshold can detect small loads, but also noise and overlapping appliances. Identification is not guaranteed.",
   settingsHistoryWarning: "Changing the threshold reruns analysis of the available history. Events and answers may change or disappear, especially if older measurements are no longer retained.",
@@ -859,6 +872,8 @@ Object.assign(messages.en, {
 });
 Object.assign(messages.it, {
   settings: "Impostazioni", settingsDescription: "Scegli la lingua e la sensibilità di rilevamento.",
+  deleteAppliance: "Elimina dispositivo", deleteApplianceTitle: "Eliminare « {name} »?",
+  deleteApplianceDescription: "Il dispositivo e i suoi sensori saranno eliminati da Home Assistant, non solo disattivati. Le attivazioni resteranno disponibili come non assegnate. Le statistiche storiche di Home Assistant saranno conservate.",
   settingsLanguage: "Lingua", settingsThreshold: "Variazione minima di potenza",
   settingsThresholdHelp: "Una soglia più bassa può rilevare piccoli carichi, ma anche rumore e dispositivi sovrapposti. L'identificazione non è garantita.",
   settingsHistoryWarning: "Modificare la soglia riavvia l'analisi dello storico disponibile. Eventi e risposte possono cambiare o scomparire, soprattutto se le misurazioni più vecchie non sono più conservate.",

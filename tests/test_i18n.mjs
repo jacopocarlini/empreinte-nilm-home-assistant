@@ -151,7 +151,35 @@ for (const language of ["fr", "en", "it"]) {
   group.energy_dash = true;
   const active = runInNewContext(`${devicePage}\npageAppareils()`, context);
   assert.ok(active.includes(translate(language, "energyVisible")));
+  for (const status of ["valide", "nomme"]) {
+    group.status = status;
+    const controls = runInNewContext(`${devicePage}\npageAppareils()`, context);
+    assert.ok(controls.includes('href="#/groupe/g1"'));
+    assert.ok(controls.includes(translate(language, "viewUses")));
+    assert.ok(controls.includes('data-delete-appliance="g1"'));
+    assert.ok(controls.includes(translate(language, "deleteAppliance")));
+    assert.equal(controls.includes('data-val="g1"'), status !== "valide");
+  }
 }
+const deleteModal = source.slice(source.indexOf("function deleteApplianceModal("), source.indexOf("// ---------- Fenêtres"));
+let confirmDelete, closed = false, deletion;
+runInNewContext(`${deleteModal}\ndeleteApplianceModal("g1");`, {
+  G: () => ({ name: "<Lamp>" }), gname: g => g.name,
+  tr: (key, values) => translate("it", key, values),
+  esc: text => text.replace(/</g, "&lt;").replace(/>/g, "&gt;"), icon: () => "",
+  $: () => confirmDelete,
+  openModal: (html, mount) => {
+    assert.ok(html.includes("&lt;Lamp&gt;"));
+    assert.ok(html.includes(translate("it", "deleteApplianceDescription")));
+    confirmDelete = {};
+    mount({}, () => { closed = true; });
+  },
+  act: msg => { deletion = JSON.parse(JSON.stringify(msg)); },
+});
+assert.equal(deletion, undefined);
+confirmDelete.onclick();
+assert.equal(closed, true);
+assert.deepEqual(deletion, { action: "delete", gid: "g1" });
 const reportPage = source.slice(source.indexOf("function reportDays()"), source.indexOf("function pageSettings()"));
 for (const language of ["fr", "en", "it"]) {
   const groups = [

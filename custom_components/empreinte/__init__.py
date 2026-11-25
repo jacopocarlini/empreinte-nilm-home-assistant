@@ -31,7 +31,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN]["http"] = True
         root = os.path.join(os.path.dirname(__file__), "frontend")
         await hass.http.async_register_static_paths([StaticPathConfig(STATIC_URL, root, False)])
-        for cmd in (ws_state, ws_day, ws_action, ws_settings):
+        for cmd in (ws_state, ws_day, ws_export_day, ws_action, ws_settings):
             websocket_api.async_register_command(hass, cmd)
 
     # Le numéro de version change dès qu'un fichier de l'interface change : le navigateur recharge tout.
@@ -101,6 +101,18 @@ async def ws_state(hass, connection, msg):
 @websocket_api.async_response
 async def ws_day(hass, connection, msg):
     connection.send_result(msg["id"], await _coord(hass).async_day(msg["day"]))
+
+
+@websocket_api.websocket_command({vol.Required("type"): "empreinte/export_day", vol.Required("day"): str})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_export_day(hass, connection, msg):
+    try:
+        rows = await _coord(hass).async_export_day(msg["day"])
+    except ValueError:
+        connection.send_error(msg["id"], "invalid_date", "Invalid date")
+        return
+    connection.send_result(msg["id"], rows)
 
 
 @websocket_api.websocket_command({

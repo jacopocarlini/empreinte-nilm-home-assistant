@@ -2192,6 +2192,8 @@ class Coordinator:
     async def async_action(self, msg: dict):
         async with self.lock:
             await self.hass.async_add_executor_job(self._action, msg)
+        if msg["action"] == "delete":
+            self.remove_entities(msg["gid"])
         for gid in list(self.entities):
             g = self.groups.get(gid)
             if gid.startswith("cat:") and self._cat(gid[4:]).get("dash"):
@@ -2204,9 +2206,10 @@ class Coordinator:
         self.push_entities()
         await self.async_sync_energy()
 
-    def _snapshot(self):
+    def _snapshot(self, include_tracks=False):
         self.undo.append((copy.deepcopy(self.groups), {e.id: (e.gid, e.pinned, set(e.excluded)) for e in self.evs}, self.counter,
-                          copy.deepcopy(self.pending), dict(self.hints), set(self.doubts)))
+                          copy.deepcopy(self.pending), dict(self.hints), set(self.doubts),
+                          copy.deepcopy(self.tracks) if include_tracks else None))
         del self.undo[:-20]
 
     def _action(self, msg):
@@ -2222,17 +2225,20 @@ class Coordinator:
         if a == "undo":
             if not self.undo:
                 return
-            self.groups, states, self.counter, self.pending, self.hints, self.doubts = self.undo.pop()
+            self.groups, states, self.counter, self.pending, self.hints, self.doubts, tracks = self.undo.pop()
             self.store.set_meta("doubts", sorted(self.doubts))
             self.store.set_meta("hints", self.hints)
             self.store.set_meta("pending", self.pending)
+            if tracks is not None:
+                self.tracks = tracks
+                self.store.set_meta("tracks", self.tracks)
             for e in self.evs:
                 if e.id in states:
                     e.gid, e.pinned, e.excluded = states[e.id][0], states[e.id][1], set(states[e.id][2])
             self._recompute()
             self._save()
             return
-        self._snapshot()
+        self._snapshot(include_tracks=a == "delete")
         gid = msg.get("gid")
         if a == "rename":
             g = self.groups[gid]
@@ -2392,9 +2398,22 @@ class Coordinator:
         elif a == "measured":
             self.groups[gid]["mesure"] = bool(msg.get("on"))
         elif a == "delete":
+            name = self.groups[gid].get("name")
             for e in self.evs:
                 if e.gid == gid:
                     e.gid, e.pinned = None, True
+                    e.probable = False
+                    self.hints.pop(e.id, None)
+                    self.doubts.discard(e.id)
+                e.excluded.discard(gid)
+            if name:
+                self.pending = [p for p in self.pending if p["name"] != name]
+                self.tracks = [t for t in self.tracks if t["name"] != name]
+                self.hints = {eid: hint for eid, hint in self.hints.items() if hint != name}
+            self.store.set_meta("pending", self.pending)
+            self.store.set_meta("tracks", self.tracks)
+            self.store.set_meta("hints", self.hints)
+            self.store.set_meta("doubts", sorted(self.doubts))
             del self.groups[gid]
         self._recompute()
         self._save()
@@ -2628,6 +2647,18 @@ class Coordinator:
             subs.append(round(rows[j][2]) if ok and len(rows[j]) > 2 else 0)
         return {"start": round(t0 * 1000), "step": engine.STEP, "values": vals, "sub": subs}
 
+    async def async_export_day(self, day: str) -> list[list[float]]:
+        try:
+            d = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=dt_util.get_default_time_zone())
+        except ValueError as err:
+            raise ValueError("Invalid date") from err
+        t0 = d.timestamp()
+        t1 = (d + timedelta(days=1)).timestamp()
+        rows = await self.hass.async_add_executor_job(self.store.samples, t0, t1)
+        rows.extend(r for r in self.buffer if t0 <= r[0] < t1)
+        unique = {r[0]: r for r in rows if t0 <= r[0] < t1}
+        return [[round(ts * 1000), p, sub] for ts, p, sub in sorted(unique.values())]
+
     # ------------------------------------------------------------ capteurs HA
     def entity_ids(self, gid):
         return [e.entity_id for e in self.entities.get(gid, []) if e.entity_id]
@@ -2695,9 +2726,12 @@ class Coordinator:
     def remove_entities(self, gid):
         ents = self.entities.pop(gid, [])
         reg = er.async_get(self.hass)
-        for e in ents:
-            if e.entity_id and reg.async_get(e.entity_id):
-                reg.async_remove(e.entity_id)
+        if reg is not None:
+            ids = {e.entity_id for e in ents if e.entity_id and reg.async_get(e.entity_id)}
+            ids.update(e.entity_id for e in er.async_entries_for_config_entry(reg, self.entry.entry_id)
+                       if (e.unique_id or "").startswith(f"{DOMAIN}_{gid}_"))
+            for entity_id in ids:
+                reg.async_remove(entity_id)
         dev = self._device(gid)
         if dev:
             dr.async_get(self.hass).async_remove_device(dev.id)

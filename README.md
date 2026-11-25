@@ -56,6 +56,8 @@ Your appliance is not in the list (pool pump, aquarium, hot tub, EV charger…)?
 
 Nothing is set in stone: an appliance you added can be **renamed**, **deleted**, **merged** with another or **split** in two. A misfiled use can be **moved**, and Empreinte recomputes the past. Any appliance or category can be **removed from the Energy dashboard** in one click, and the last action can be **undone**.
 
+In **Appliances**, **View uses** is available for both learning appliances and active sensors. **Delete appliance** removes the recognised appliance and its Home Assistant device and sensors after confirmation; unlike removing it from the Energy dashboard, it does not leave a disabled device. Recorded uses remain unassigned, and historical Home Assistant statistics are retained.
+
 ## Installation
 
 ### With HACS (recommended)

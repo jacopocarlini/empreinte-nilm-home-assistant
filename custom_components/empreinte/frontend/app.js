@@ -427,6 +427,14 @@ async function confirmGroup(gid, name) {
 }
 const validateGroup = gid => confirmGroup(gid);
 const dissolveGroup = async gid => { const n = gname(G(gid)); await act({ action: "delete", gid }, tr("groupDeleted", { name: n })); go("#/decouvertes"); };
+function deleteApplianceModal(gid) {
+  const name = gname(G(gid));
+  openModal(`<h2>${esc(tr("deleteApplianceTitle", { name }))}</h2>
+    <p class="sub">${tr("deleteApplianceDescription")}</p>
+    <div class="acts"><button class="btn ghost" data-close>${tr("cancel")}</button><button class="btn danger" id="ok">${icon("trash")} ${tr("deleteAppliance")}</button></div>`, (b, close) => {
+    $("#ok", b).onclick = () => { close(); act({ action: "delete", gid }, tr("groupDeleted", { name })); };
+  });
+}
 
 // ---------- Fenêtres, menus, toasts
 let toastT;
@@ -1038,8 +1046,12 @@ function pageAppareils() {
       ${((S.status.categories || []).find(c => c.id === g.cat) || {}).dash
         ? `<div class="banner">${icon("check")}<div class="grow">${esc(tr("categoryCounted", { name: categoryName((S.status.categories || []).find(c => c.id === g.cat)) }))}</div></div>`
         : g.status === "valide" ? energyBlock(g) : ""}
-      ${g.status === "valide" ? `<div class="ent">${(g.entities || []).map(id => `<div><b>${esc(id)}</b><span>${esc(stateOf(id))}</span></div>`).join("") || `<div>${tr("sensorsCreating")}</div>`}</div>`
-        : `<div style="display:flex;gap:8px"><a class="btn sm" href="#/groupe/${g.id}">${tr("viewUses")}</a><button class="btn sm primary" data-val="${g.id}">${icon("check")} ${tr("validate")}</button></div>`}
+      ${g.status === "valide" ? `<div class="ent">${(g.entities || []).map(id => `<div><b>${esc(id)}</b><span>${esc(stateOf(id))}</span></div>`).join("") || `<div>${tr("sensorsCreating")}</div>`}</div>` : ""}
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <a class="btn sm" href="#/groupe/${g.id}">${tr("viewUses")}</a>
+        ${g.status !== "valide" ? `<button class="btn sm primary" data-val="${g.id}">${icon("check")} ${tr("validate")}</button>` : ""}
+        <button class="btn sm ghost danger" data-delete-appliance="${g.id}">${icon("trash")} ${tr("deleteAppliance")}</button>
+      </div>
     </div>`;
   }).join("")}</div>`;
 }
@@ -1067,7 +1079,7 @@ function pageRapport() {
   const splits = S.groups.filter(g => gstats(g.id).split);
   const baseW = base / hours * 1000;
   return `
-  <div class="page-h"><div><h1>${tr("weeklyReport")}</h1><p class="sub">${esc(tr("reportPeriod", { from: dfDay.format(dayStartMs(ds[0])), to: dfDay.format(dayStartMs(ds[ds.length - 1])) }))}</p></div><button class="btn" id="b-print">${icon("report")} ${tr("reportPrint")}</button></div>
+  <div class="page-h"><div><h1>${tr("weeklyReport")}</h1><p class="sub">${esc(tr("reportPeriod", { from: dfDay.format(dayStartMs(ds[0])), to: dfDay.format(dayStartMs(ds[ds.length - 1])) }))}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="b-export">${icon("report")} ${tr("exportMeasurements")}</button><button class="btn" id="b-print">${icon("report")} ${tr("reportPrint")}</button></div></div>
   <div class="grid g-tiles">
     <div class="card tile"><div class="lbl">${tr("reportConsumption")}</div><div class="val">${nf1.format(tot)}<small>kWh</small></div><div class="foot">${esc(tr("reportCostDays", { cost: fmtEur(tot), days: ds.length, unit: tr(ds.length === 1 ? "dayUnitOne" : "dayUnitOther") }))}</div></div>
     <div class="card tile"><div class="lbl">${tr("reportAttributed")}</div><div class="val">${Math.round(named / tot * 100)}<small>%</small></div><div class="foot">${fmtKwh(named)}</div></div>
@@ -1109,11 +1121,67 @@ function pageRapport() {
 function mountRapport() {
   mountOverlays();
   $("#b-print").onclick = () => window.print();
+  $("#b-export").onclick = exportMeasurementsModal;
   $$("[data-val]").forEach(b => b.onclick = () => validateModal(b.dataset.val));
   $$("[data-yes]").forEach(b => b.onclick = () => confirmGroup(b.dataset.yes, hypLabel(G(b.dataset.yes))));
   $$("[data-ok]").forEach(b => b.onclick = () => confirmGroup(b.dataset.ok));
   $$("[data-no]").forEach(b => b.onclick = () => renameModal(b.dataset.no));
   $$("#heat i[data-l]").forEach(c => { if (c.dataset.v === "") return; c.onpointerenter = ev => showTip(ev, `<div class="t">${esc(c.dataset.l)}</div><div class="r"><span>${tr("reportConsumed")}</span><b>${fmtKwh(+c.dataset.v)}</b></div>`); c.onpointermove = moveTip; c.onpointerleave = hideTip; });
+}
+
+function exportMeasurementsModal() {
+  const today = new Date();
+  const from = new Date(today); from.setDate(from.getDate() - 6);
+  const dateValue = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  openModal(`<h2>${tr("exportMeasurements")}</h2><p class="sub">${tr("exportMeasurementsHelp")}</p>
+    <form class="stack" id="export-form" style="gap:10px">
+      <label for="export-from">${tr("exportFrom")}</label><input class="field" id="export-from" type="date" required value="${dateValue(from)}">
+      <label for="export-to">${tr("exportTo")}</label><input class="field" id="export-to" type="date" required value="${dateValue(today)}">
+      <div id="export-result" class="sub" role="status"></div>
+      <div class="acts"><button type="button" class="btn ghost" data-close>${tr("cancel")}</button><button class="btn primary" id="export-submit">${tr("exportDownload")}</button></div>
+    </form>`, back => {
+    const form = $("#export-form", back), button = $("#export-submit", back), result = $("#export-result", back);
+    form.onsubmit = async event => {
+      event.preventDefault();
+      const start = $("#export-from", form).value, end = $("#export-to", form).value;
+      if (!start || !end || start > end) {
+        result.textContent = tr("exportInvalidRange");
+        return;
+      }
+      const days = [];
+      for (let d = new Date(`${start}T12:00:00Z`), last = new Date(`${end}T12:00:00Z`); d <= last; d.setUTCDate(d.getUTCDate() + 1)) {
+        days.push(d.toISOString().slice(0, 10));
+      }
+      button.disabled = true;
+      try {
+        const samples = [];
+        for (let i = 0; i < days.length; i++) {
+          result.textContent = tr("exportProgress", { current: i + 1, total: days.length });
+          const response = await call({ type: "empreinte/export_day", day: days[i] });
+          samples.push(...response);
+        }
+        if (!samples.length) {
+          result.textContent = tr("exportNoData");
+          return;
+        }
+        const lines = [
+          "timestamp_utc,power_total_w,measured_subtracted_w,power_analyzed_w",
+          ...samples.map(([ts, power, sub]) => [new Date(ts).toISOString(), power, sub, power - sub].join(",")),
+        ];
+        const blob = new Blob(["\uFEFF", lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob), link = document.createElement("a");
+        link.href = url;
+        link.download = `empreinte-mesures-${start}-${end}.csv`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        result.textContent = tr("exportDone", { count: samples.length });
+      } catch (err) {
+        result.textContent = `${tr("error")}: ${err.message || err.code || String(err)}`;
+      } finally {
+        button.disabled = false;
+      }
+    };
+  });
 }
 
 function pageSettings() {
@@ -1181,6 +1249,7 @@ async function render() {
   else if (page === "appareils") {
     v.innerHTML = pageAppareils();
     bindShared();
+    $$("[data-delete-appliance]").forEach(b => b.onclick = () => deleteApplianceModal(b.dataset.deleteAppliance));
     $$("[data-val]").forEach(b => b.onclick = () => validateModal(b.dataset.val));
     $$("[data-energy-on]").forEach(b => b.onclick = () => act({ action: "energy_add", gid: b.dataset.energyOn }, tr("namedAddedEnergy", { name: gname(G(b.dataset.energyOn)) })));
     $$("[data-energy-off]").forEach(b => b.onclick = () => act({ action: "energy_remove", gid: b.dataset.energyOff }, tr("namedRemovedEnergy", { name: gname(G(b.dataset.energyOff)) })));
