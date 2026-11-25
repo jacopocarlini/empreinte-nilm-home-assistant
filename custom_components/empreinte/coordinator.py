@@ -31,7 +31,7 @@ MENAGER_RE = re.compile(r"lave[- ]?linge|lave[- ]?vaisselle|s[eè]che[- ]?linge|
 
 _LOGGER = logging.getLogger(__name__)
 PROFILE_MAX_POINTS = 120
-RESEGMENT_KEY = "resegment_v7"   # à changer quand la façon de mesurer change : tout est re-mesuré
+RESEGMENT_KEY = "resegment_v8"   # à changer quand les règles de détection changent : tout est re-mesuré
 
 
 def _slug(s: str) -> str:

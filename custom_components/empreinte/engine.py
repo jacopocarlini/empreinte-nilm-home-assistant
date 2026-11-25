@@ -17,8 +17,8 @@ from dataclasses import dataclass, field
 
 STEP = 15            # s, pas des profils enregistrés
 ON_W = 350           # écart au fond qui ouvre un événement
-OFF_W = 200          # sous cet écart, l'appareil est considéré éteint
-OFF_FRAC = 0.35      # … ou sous 35 % du pic de l'utilisation
+OFF_W = 200           # sous cet écart, l'appareil est considéré éteint
+OFF_FRAC = 0.35       # seuil relatif au niveau stable, après la phase de démarrage
 GAP_S = 150          # un creux plus court ne coupe pas l'événement (thermostat, micro-ondes)
 PRE_S = 90           # fond d'une utilisation = médiane des 90 s juste avant son saut
 BASE_WIN_S = 900     # le fond = bas de la courbe sur les 15 dernières minutes calmes
@@ -91,6 +91,7 @@ def realign(ts: list[float], ps: list[float], subs: list[float], min_edge: float
 
 CREEP_S = 90         # une montée en plusieurs petits paliers qui tient 90 s au-dessus de ON_W ouvre un événement
 CREEP_OFF_FRAC = 0.6  # … et se termine sous 60 % de son pic
+STARTUP_SETTLE_S = 60  # un pic suivi d'un palier plus bas pendant cette phase est un appel de courant
 
 
 def segment(ts: list[float], ps: list[float], on_w: float = ON_W):
@@ -107,6 +108,7 @@ def segment(ts: list[float], ps: list[float], on_w: float = ON_W):
     last_above = None
     base_ev = 0.0
     peak_ev = 0.0
+    startup_rebased = False
     prev_t = None
     rearm = None                 # après une coupure : on n'ouvre rien avant cet instant
     run_i = None                 # début d'une montée lente (au-dessus du fond, sans saut assez franc)
@@ -154,12 +156,13 @@ def segment(ts: list[float], ps: list[float], on_w: float = ON_W):
                             and all(q[1] - base < on_w for q in quiet if ts[run_i] - PRE_S <= q[0] < ts[run_i])):
                         i_start, last_above, base_ev = run_i, i, base
                         peak_ev = max(ps[run_i:i + 1]) - base_ev
+                        startup_rebased = False
                         creep, run_i = True, None
                         continue
                     quiet.append((t, p))
                     continue
                 run_i = None
-                i_start, last_above, peak_ev, creep = i, i, p - base_ev, False
+                i_start, last_above, peak_ev, startup_rebased, creep = i, i, p - base_ev, False, False
                 continue
             if p - base > off_w:
                 if run_i is None:
@@ -171,20 +174,27 @@ def segment(ts: list[float], ps: list[float], on_w: float = ON_W):
                 quiet.popleft()
             base = quantile([q[1] for q in quiet], 0.2)
         else:
-            # L'appareil est éteint quand la courbe redescend franchement : sous OFF_W, ou sous un tiers
-            # de son pic (un petit appareil allumé entre-temps ne doit pas prolonger l'utilisation).
-            peak_ev = max(peak_ev, p - base_ev)
-            # (une montée lente se compte depuis le fond : elle s'arrête plus tôt, pour ne pas garder un petit appareil
-            # resté allumé après elle)
-            if p - base_ev > max(off_w, (CREEP_OFF_FRAC if creep else OFF_FRAC) * peak_ev):
+            delta = p - base_ev
+            if delta > off_w:
+                # Un appel de courant peut retomber très vite sur le vrai palier de l'appareil.
+                # Rebase une seule fois pendant le démarrage, sans laisser un appareil séparé
+                # allumé plus tard prolonger l'événement.
+                if (not creep and not startup_rebased and t - ts[i_start] <= STARTUP_SETTLE_S
+                        and delta < OFF_FRAC * peak_ev):
+                    peak_ev = delta
+                    startup_rebased = True
+                else:
+                    peak_ev = max(peak_ev, delta)
+            off_level = max(off_w, (CREEP_OFF_FRAC if creep else OFF_FRAC) * peak_ev)
+            if delta > off_level:
                 if t - ts[i_start] > MAX_EVENT_S:
                     close(i)
-                    i_start, last_above = i, i
+                    i_start, last_above, peak_ev, startup_rebased = i, i, delta, False
                 else:
                     last_above = i
             elif t - ts[last_above] > GAP_S:
                 close(last_above + 1)
-                i_start, run_i, creep = None, None, False
+                i_start, run_i, creep, startup_rebased = None, None, False, False
                 quiet = deque(q for q in quiet if q[0] >= t - BASE_WIN_S)
                 quiet.append((t, p))
                 base = quantile([q[1] for q in quiet], 0.2)

@@ -4,7 +4,7 @@ Pour les curieux et pour ceux qui veulent modifier le programme. Pour l'utiliser
 
 ## L'algorithme, étape par étape
 
-1. **Découpage** (`engine.segment`) : chaque montée atteignant le seuil configuré (350 W par défaut) au-dessus du fond permanent ouvre une utilisation. Le fond est le bas de la courbe sur les 15 dernières minutes calmes ; celui d'une utilisation est le niveau juste avant son saut. Le panneau Paramètres permet de choisir un entier entre 10 et 2 000 W. Le changement relance l'analyse des mesures conservées et peut modifier ou supprimer des événements et réponses.
+1. **Découpage** (`engine.segment`) : chaque montée atteignant le seuil configuré (350 W par défaut) au-dessus du fond permanent ouvre une utilisation. Le fond est le bas de la courbe sur les 15 dernières minutes calmes ; celui d'une utilisation est le niveau juste avant son saut. L'utilisation reste ouverte tant que la puissance dépasse le seuil d'arrêt avec hystérésis, même si elle retombe après un pic de démarrage ; un creux doit durer 150 s pour la fermer. Le panneau Paramètres permet de choisir un entier entre 10 et 2 000 W. Le changement relance l'analyse des mesures conservées et peut modifier ou supprimer des événements et réponses.
 2. **Résumé** (`engine.features`) : puissance du palier de départ, durée, part du temps allumé, nombre de marche/arrêt, forme (stable, paliers, cycles), heure.
 3. **Séparation** (`engine.split_session`) : quand plusieurs appareils tournent ensemble, chaque montée est associée à la descente de même taille. On ne sépare que si c'est net.
 4. **Recollage** (`engine.should_stitch`) : un appareil qui reprend dans les 6 minutes avec la même puissance (thermostat) reste une seule utilisation.
