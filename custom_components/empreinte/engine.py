@@ -45,7 +45,7 @@ def quantile(vals, q):
 LAG_S = 30           # une prise et le compteur peuvent signaler le même changement jusqu'à 30 s d'écart
 
 
-def realign(ts: list[float], ps: list[float], subs: list[float], min_edge: float = 300) -> list[float]:
+def realign(ts: list[float], ps: list[float], subs: list[float]) -> list[float]:
     """Courbe du compteur moins les prises mesurées, en tenant compte de leur décalage.
 
     Le compteur et une prise ne signalent pas un même changement au même instant (quelques secondes, parfois
@@ -58,9 +58,9 @@ def realign(ts: list[float], ps: list[float], subs: list[float], min_edge: float
     n = len(out)
     for k in range(1, n):
         ds = subs[k] - subs[k - 1]
-        if abs(ds) < min_edge:
+        if abs(ds) < EDGE_W:
             continue
-        tol = max(min(150.0, 0.5 * abs(ds)), 0.3 * abs(ds))
+        tol = max(150.0, 0.3 * abs(ds))
         done = False
         # la prise en retard : la différence a sauté d'autant un peu avant (ou de plus : un autre appareil a démarré
         # en même temps)
@@ -91,39 +91,14 @@ def realign(ts: list[float], ps: list[float], subs: list[float], min_edge: float
 
 CREEP_S = 90         # une montée en plusieurs petits paliers qui tient 90 s au-dessus de ON_W ouvre un événement
 CREEP_OFF_FRAC = 0.6  # … et se termine sous 60 % de son pic
-LOW_MIN_W = 60
-LOW_MAX_W = 180
-LOW_STABLE_S = 90
-LOW_SPIKE_S = 60
-SMALL_CONFIRM_S = 30
-SMALL_PHASE_STABLE_S = 90
-PROFILE_BINS = 16
 
 
-def _low_start(prof):
-    """Palier faible et stable juste après un bref pic, ou None si les indices sont insuffisants."""
-    for k in range(1, min(len(prof), LOW_SPIKE_S // STEP + 1)):
-        if not LOW_MIN_W <= prof[k] <= LOW_MAX_W:
-            continue
-        win = prof[k:k + LOW_STABLE_S // STEP]
-        if len(win) < LOW_STABLE_S // STEP:
-            return None
-        level = engine_median(win)
-        if (LOW_MIN_W <= level <= LOW_MAX_W
-                and min(prof[:k]) > ON_W and max(prof[:k]) >= 2 * level
-                and max(abs(v - level) for v in win) <= max(20, 0.25 * level)):
-            return float(level), k
-        return None
-    return None
-
-
-def segment(ts: list[float], ps: list[float], on_w: float = ON_W, plateau_w: float = 10):
+def segment(ts: list[float], ps: list[float]):
     """Découpe la courbe en événements.
 
     Retourne (events, open_start) : la liste des événements terminés
     (start, end, base, prof) et le début d'un événement encore en cours, ou None.
     """
-    off_w = min(OFF_W, on_w * OFF_W / ON_W)
     events = []
     quiet: deque = deque()
     base = None
@@ -135,14 +110,6 @@ def segment(ts: list[float], ps: list[float], on_w: float = ON_W, plateau_w: flo
     rearm = None                 # après une coupure : on n'ouvre rien avant cet instant
     run_i = None                 # début d'une montée lente (au-dessus du fond, sans saut assez franc)
     creep = False
-    low_candidate = None
-    low_level = None
-    small_event = False
-    phase_candidate = None
-    phase_level = None
-    small_candidate = None
-    small_base = 0.0
-    small_required = plateau_w
 
     def close(i_next):
         t0 = ts[i_start]
@@ -159,9 +126,6 @@ def segment(ts: list[float], ps: list[float], on_w: float = ON_W, plateau_w: flo
             if i_start is not None:
                 close(None)
                 i_start = None
-            low_candidate, low_level = None, None
-            small_event, phase_candidate, phase_level = False, None, None
-            small_candidate = None
             quiet, base, rearm, run_i = deque(), None, t + REARM_S, None
         prev_t = t
         if rearm is not None and t < rearm:
@@ -171,13 +135,13 @@ def segment(ts: list[float], ps: list[float], on_w: float = ON_W, plateau_w: flo
         if i_start is None:
             if base is None:
                 base = p
-            if p - base >= on_w:
+            if p - base > ON_W:
                 # Le fond de l'utilisation = le niveau juste avant le saut (et pas la moyenne des 15 dernières
                 # minutes, qui retarde) : un chargeur allumé peu avant n'est pas compté dans l'appareil.
                 # Le Linky n'envoie une valeur que quand elle change : sans valeur récente, la dernière reçue est encore vraie.
                 just_before = [q[1] for q in quiet if q[0] >= t - PRE_S] or ([quiet[-1][1]] if quiet else [])
                 base_ev = max(base, engine_median(just_before)) if just_before else base
-                if p - base_ev < on_w:
+                if p - base_ev <= ON_W:
                     # Pas de saut franc, mais la courbe est déjà bien au-dessus du fond : une plaque qu'on monte
                     # cran par cran, ou deux petits appareils l'un après l'autre. Si ça tient CREEP_S, c'est
                     # un appareil, compté depuis le début de la montée.
@@ -185,59 +149,20 @@ def segment(ts: list[float], ps: list[float], on_w: float = ON_W, plateau_w: flo
                         run_i = i
                     # (un appareil à thermostat qui se rallume n'est pas une montée : rien de gros juste avant)
                     if (t - ts[run_i] >= CREEP_S
-                            and engine_median(ps[run_i:i + 1]) - base >= on_w
-                            and all(q[1] - base < on_w for q in quiet if ts[run_i] - PRE_S <= q[0] < ts[run_i])):
+                            and engine_median(ps[run_i:i + 1]) - base > ON_W
+                            and all(q[1] - base <= ON_W for q in quiet if ts[run_i] - PRE_S <= q[0] < ts[run_i])):
                         i_start, last_above, base_ev = run_i, i, base
                         peak_ev = max(ps[run_i:i + 1]) - base_ev
                         creep, run_i = True, None
-                        small_candidate = None
                         continue
                     quiet.append((t, p))
                     continue
                 run_i = None
                 i_start, last_above, peak_ev, creep = i, i, p - base_ev, False
-                low_candidate, low_level = None, None
-                small_event, phase_candidate, phase_level = False, None, None
-                small_candidate = None
                 continue
-            # Confirmer une hausse, pas une puissance constante : le petit appareil peut varier.
-            if small_candidate is None:
-                prior = [q[1] for q in quiet if q[0] >= t - PRE_S]
-                if prior:
-                    preceding = engine_median(prior)
-                    noise_values = [q[1] for q in quiet]
-                    changes = [abs(b - a) for a, b in zip(noise_values, noise_values[1:])]
-                    required = max(plateau_w, 4 * engine_median(changes),
-                                   2 * quantile(changes, 0.9)) if changes else plateau_w
-                    if p - preceding >= required and i > 0 and p > ps[i - 1]:
-                        small_candidate, small_base, small_required = i, preceding, required
-            if small_candidate is not None:
-                levels = [v - small_base for v in ps[small_candidate:i + 1]]
-                if levels[-1] < 0.5 * small_required:
-                    small_candidate = None
-                elif t - ts[small_candidate] >= SMALL_CONFIRM_S:
-                    if engine_median(levels) >= small_required:
-                        i_start, last_above, base_ev = small_candidate, i, small_base
-                        peak_ev = max(levels)
-                        small_event, small_candidate, run_i = True, None, None
-                        creep = False
-                        low_candidate, low_level = None, None
-                        phase_candidate, phase_level = None, None
-                        continue
-                    small_candidate = None
-            delta = p - base
-            if delta > off_w or delta >= plateau_w:
+            if p - base > OFF_W:
                 if run_i is None:
                     run_i = i
-                elapsed = t - ts[run_i]
-                if (elapsed >= CREEP_S
-                        and engine_median(ps[run_i:i + 1]) - base >= on_w
-                        and all(q[1] - base < on_w for q in quiet if ts[run_i] - PRE_S <= q[0] < ts[run_i])):
-                    i_start, last_above, base_ev = run_i, i, base
-                    peak_ev = max(ps[run_i:i + 1]) - base_ev
-                    creep, run_i = True, None
-                    small_candidate = None
-                    continue
             else:
                 run_i = None
             quiet.append((t, p))
@@ -245,52 +170,20 @@ def segment(ts: list[float], ps: list[float], on_w: float = ON_W, plateau_w: flo
                 quiet.popleft()
             base = quantile([q[1] for q in quiet], 0.2)
         else:
-            if low_candidate is not None and low_level is None and t - ts[low_candidate] >= LOW_STABLE_S:
-                candidate_prof = profile(ts, ps, i_start, ts[i_start], t, base_ev)
-                low = _low_start(candidate_prof)
-                if low:
-                    low_level = low[0]
-                    last_above = i - 1
-                low_candidate = None
-            if (not creep and low_level is None and low_candidate is None
-                    and t - ts[i_start] <= LOW_SPIKE_S
-                    and on_w >= ON_W and LOW_MIN_W <= p - base_ev <= LOW_MAX_W):
-                low_candidate = i
-            delta = p - base_ev
-            old_threshold = max(off_w, (CREEP_OFF_FRAC if creep else OFF_FRAC) * peak_ev)
-            if low_level is None and not small_event and plateau_w <= delta <= min(old_threshold, LOW_MAX_W):
-                if phase_candidate is None:
-                    phase_candidate = i
-                elif t - ts[phase_candidate] >= SMALL_PHASE_STABLE_S:
-                    levels = [ps[j] - base_ev for j in range(phase_candidate, i + 1)]
-                    level = engine_median(levels)
-                    if level >= plateau_w and max(levels) - min(levels) <= max(8, 0.2 * level):
-                        phase_level = level
-                        last_above = i
-                    phase_candidate = None
-            elif delta < plateau_w or delta > old_threshold:
-                phase_candidate = None
             # L'appareil est éteint quand la courbe redescend franchement : sous OFF_W, ou sous un tiers
             # de son pic (un petit appareil allumé entre-temps ne doit pas prolonger l'utilisation).
             peak_ev = max(peak_ev, p - base_ev)
             # (une montée lente se compte depuis le fond : elle s'arrête plus tôt, pour ne pas garder un petit appareil
             # resté allumé après elle)
-            threshold = (max(plateau_w * 0.5, 0.5 * low_level) if low_level is not None else
-                         max(plateau_w * 0.5, 0.5 * phase_level) if phase_level is not None else
-                         small_required * 0.5 if small_event else
-                         max(off_w, (CREEP_OFF_FRAC if creep else OFF_FRAC) * peak_ev))
-            if p - base_ev > threshold:
+            if p - base_ev > max(OFF_W, (CREEP_OFF_FRAC if creep else OFF_FRAC) * peak_ev):
                 if t - ts[i_start] > MAX_EVENT_S:
                     close(i)
                     i_start, last_above = i, i
-                    low_candidate, low_level = None, None
-                    small_event, phase_candidate, phase_level = False, None, None
                 else:
                     last_above = i
-            elif t - ts[last_above] > GAP_S and low_candidate is None:
+            elif t - ts[last_above] > GAP_S:
                 close(last_above + 1)
                 i_start, run_i, creep = None, None, False
-                low_level, small_event, phase_candidate, phase_level = None, False, None, None
                 quiet = deque(q for q in quiet if q[0] >= t - BASE_WIN_S)
                 quiet.append((t, p))
                 base = quantile([q[1] for q in quiet], 0.2)
@@ -327,20 +220,20 @@ SPLIT_MAX = 3
 def _edges(prof, closed=True, min_edge=EDGE_W):
     """Sauts d'au moins min_edge dans un profil. closed=False : l'utilisation est encore en cours (pas d'arrêt final)."""
     pr = [0] + list(prof) + ([0] if closed else [])
-    raw = [(k, pr[k] - pr[k - 1]) for k in range(1, len(pr)) if abs(pr[k] - pr[k - 1]) >= min(100, min_edge)]
+    raw = [(k, pr[k] - pr[k - 1]) for k in range(1, len(pr)) if abs(pr[k] - pr[k - 1]) >= 100]
     out = []
     for k, d in raw:
         if out and (out[-1][1] > 0) == (d > 0) and k - out[-1][2] <= EDGE_MERGE:
             out[-1] = (out[-1][0], out[-1][1] + d, k)
         else:
             out.append((k, d, k))
-    return [(k_last if d < 0 else k0, d) for k0, d, k_last in _settle(out, SETTLE_S / STEP, min_edge) if abs(d) >= min_edge]
+    return [(k_last if d < 0 else k0, d) for k0, d, k_last in _settle(out, SETTLE_S / STEP) if abs(d) >= min_edge]
 
 
 SETTLE_S = 60         # le Linky envoie une valeur toutes les 7 à 38 s : la fin du pic peut arriver 1 min après
 
 
-def _settle(edges, window, min_edge=100):
+def _settle(edges, window):
     """Appel de courant au démarrage : un pic suivi de près (window) d'une descente plus petite = un seul
     démarrage, compté à sa puissance stable (chauffage soufflant à céramique, moteur…).
     edges : [(début, Δ, fin)] ; window dans la même unité que les temps."""
@@ -351,7 +244,7 @@ def _settle(edges, window, min_edge=100):
             n = edges[i + 1]
             if e[1] > 0 and n[1] < 0 and n[0] - e[2] <= window and -n[1] < 0.8 * e[1]:
                 net = e[1] + n[1]
-                if net >= min(100, min_edge):
+                if net >= 100:
                     out.append((e[0], net, n[2]))
                 i += 2
                 continue
@@ -360,12 +253,11 @@ def _settle(edges, window, min_edge=100):
     return out
 
 
-def _close(h, m, min_edge=EDGE_W):
-    tolerance = 200 if min_edge >= EDGE_W else min(200, max(10, 0.25 * max(h, m)))
-    return abs(m - h) <= max(tolerance, 0.25 * h)
+def _close(h, m):
+    return abs(m - h) <= max(200, 0.25 * h)
 
 
-def split_session(prof: list[int], min_edge: int = EDGE_W, on_w: float = ON_W) -> list[tuple[int, list[int]]]:
+def split_session(prof: list[int], min_edge: int = EDGE_W) -> list[tuple[int, list[int]]]:
     """Découpe une utilisation en plusieurs appareils si la courbe le montre clairement.
 
     Retourne [(décalage en points, profil)], ou [(0, prof)] si on ne sépare pas.
@@ -373,21 +265,6 @@ def split_session(prof: list[int], min_edge: int = EDGE_W, on_w: float = ON_W) -
     On ne sépare que si tous les appareils trouvés sont nets, sauf un au plus dont on voit
     au moins le démarrage ou l'arrêt.
     """
-    low = _low_start(prof)
-    if low:
-        level, k0 = low
-        own = [v if k < k0 else min(v, round(level)) for k, v in enumerate(prof)]
-        rest = [v - own[k] for k, v in enumerate(prof)]
-        spans = _pair(rest, min_edge=min_edge)
-        if (len(spans) == 1 and spans[0][3] and spans[0][4]
-                and spans[0][2] >= on_w):
-            a, b = spans[0][:2]
-            if sum(rest[a:b]) >= 0.9 * sum(rest):
-                for k in range(len(own)):
-                    if not a <= k < b:
-                        own[k] += rest[k]
-                return [(0, own), (a, rest[a:b])]
-        return [(0, prof)]
     n = len(prof)
     spans = _pair(prof, min_edge=min_edge)
     if not spans:
@@ -411,8 +288,7 @@ def split_session(prof: list[int], min_edge: int = EDGE_W, on_w: float = ON_W) -
         for a, b, *_ in c["spans"]:
             for k in range(max(a, k0), min(b, k1)):
                 p[k - k0] = round(c["h"])
-        min_share = 0.01 if on_w < ON_W else 0.1
-        if len(p) >= 2 and max(p) >= on_w and sum(p) >= min_share * total:
+        if len(p) >= 2 and max(p) >= ON_W and sum(p) >= 0.1 * total:
             out.append((k0, p))
     return out if len(out) >= 2 else [(0, prof)]
 
@@ -426,7 +302,7 @@ def _pair(prof, closed=True, min_edge=EDGE_W):
             opened.append((k - 1, d, True))
             continue
         m = -d
-        best = min((o for o in opened if _close(o[1], m, min_edge)), key=lambda o: abs(o[1] - m), default=None)
+        best = min((o for o in opened if _close(o[1], m)), key=lambda o: abs(o[1] - m), default=None)
         if best:
             opened.remove(best)
             spans.append((best[0], k - 1, (best[1] + m) / 2, best[2], True))
@@ -434,14 +310,14 @@ def _pair(prof, closed=True, min_edge=EDGE_W):
         pair = None
         for a in range(len(opened)):
             for b in range(a + 1, len(opened)):
-                if _close(opened[a][1] + opened[b][1], m, min_edge):
+                if _close(opened[a][1] + opened[b][1], m):
                     pair = (opened[a], opened[b])
         if pair:   # deux appareils qui s'arrêtent en même temps
             for o in pair:
                 opened.remove(o)
                 spans.append((o[0], k - 1, o[1], o[2], True))
             continue
-        big = max((o for o in opened if o[1] - m >= min_edge), key=lambda o: o[1], default=None)
+        big = max((o for o in opened if o[1] - m >= EDGE_W), key=lambda o: o[1], default=None)
         if big:    # deux appareils démarrés en même temps : un seul s'arrête
             opened[opened.index(big)] = (big[0], big[1] - m, False)
             spans.append((big[0], k - 1, m, False, False))
@@ -451,23 +327,20 @@ def _pair(prof, closed=True, min_edge=EDGE_W):
 
 
 def _components(spans):
-    """Regroupe les intervalles de même hauteur, sauf s'ils se chevauchent (deux appareils simultanés)."""
+    """Regroupe les intervalles de même hauteur : un appareil qui s'allume et s'éteint (thermostat) reste un seul appareil."""
     comps = []
-    for s in sorted(spans, key=lambda s: (s[0], s[1], s[2])):
-        matches = [c for c in comps
-                   if abs(math.log(s[2] / c["h"])) < 0.12
-                   and not any(max(s[0], x[0]) < min(s[1], x[1]) for x in c["spans"])]
-        if matches:
-            gap = lambda c: min(max(0, max(s[0], x[0]) - min(s[1], x[1])) for x in c["spans"])
-            c = min(matches, key=gap)
-            c["spans"].append(s)
-            c["h"] = sum(x[2] for x in c["spans"]) / len(c["spans"])
+    for s in sorted(spans, key=lambda s: s[2]):
+        for c in comps:
+            if abs(math.log(s[2] / c["h"])) < 0.12:
+                c["spans"].append(s)
+                c["h"] = sum(x[2] for x in c["spans"]) / len(c["spans"])
+                break
         else:
             comps.append({"h": s[2], "spans": [s]})
     return comps
 
 
-def extract_component(prof: list[int], k_at: int, power: float, min_edge: float = EDGE_W, on_w: float = ON_W):
+def extract_component(prof: list[int], k_at: int, power: float):
     """Découpe guidée : sort d'une utilisation mélangée l'appareil désigné par l'utilisateur
     (son saut de démarrage à k_at, sa puissance environ power).
 
@@ -475,7 +348,7 @@ def extract_component(prof: list[int], k_at: int, power: float, min_edge: float 
     """
     n = len(prof)
     best, bs = None, None
-    for c in _components(_pair(prof, min_edge=min_edge)):
+    for c in _components(_pair(prof)):
         k0 = min(sp[0] for sp in c["spans"])
         rel = abs(c["h"] - power) / max(c["h"], power)
         if rel > 0.35 or abs(k0 - k_at) > 8:
@@ -494,30 +367,21 @@ def extract_component(prof: list[int], k_at: int, power: float, min_edge: float 
         for k in range(max(a, 0), min(b, n)):
             part[k - k0] = h
             rest[k] = max(0, rest[k] - h)
-    if max(part, default=0) < on_w:
+    if max(part, default=0) < ON_W:
         return None
     return k0, part, rest
 
 
-def live_parts(prof: list[int], min_edge: float = EDGE_W) -> list[dict]:
+def live_parts(prof: list[int]) -> list[dict]:
     """Ce qui tourne dans une utilisation encore en cours, appareil par appareil (comme on le lirait à la main).
 
     Chaque montée est associée à la descente de même taille ; les marche/arrêt de même hauteur
     (thermostat) restent un seul appareil. Retourne [{k0, k1, h, n, running}].
     """
-    low = _low_start(prof)
-    if low:
-        level, k0 = low
-        rest = [0 if k < k0 else max(0, v - round(level)) for k, v in enumerate(prof)]
-        body = prof[k0:]
-        threshold = max(30, level * 0.5)
-        cycles = 1 + sum(body[k] >= threshold and body[k - 1] < threshold for k in range(1, len(body)))
-        return [{"k0": 0, "k1": len(prof), "h": round(level), "n": cycles,
-                 "running": prof[-1] > threshold, "low": True}] + live_parts(rest, min_edge)
     n = len(prof)
     out = []
-    for c in _components(_pair(prof, closed=False, min_edge=min_edge)):
-        if c["h"] < min_edge:
+    for c in _components(_pair(prof, closed=False)):
+        if c["h"] < EDGE_W:
             continue
         k0 = min(sp[0] for sp in c["spans"])
         k1 = max(sp[1] for sp in c["spans"])
@@ -704,14 +568,14 @@ def track(ts, ps, t0: float, power: float, now: float, pause_max: float, max_s: 
             "last_change": since, "done": done, "end": end, "p": round(power)}
 
 
-def clean_rest(rest: list[int], min_len: int = 3, min_level: float = OFF_W) -> list[int]:
+def clean_rest(rest: list[int], min_len: int = 3) -> list[int]:
     """Après avoir retiré un appareil, efface les miettes (moins de 45 s) laissées à ses démarrages et arrêts."""
     out = list(rest)
     k = 0
     while k < len(out):
-        if out[k] >= min_level:
+        if out[k] >= OFF_W:
             j = k
-            while j < len(out) and out[j] >= min_level:
+            while j < len(out) and out[j] >= OFF_W:
                 j += 1
             if j - k < min_len:
                 for q in range(k, j):
@@ -754,9 +618,6 @@ def _start(prof: list[int], spike: bool = True) -> tuple[float | None, int, bool
     """Puissance propre d'un appareil : la hauteur de sa marche de départ, une fois son pic de démarrage retombé
     (chauffage à céramique : 1,6 kW quelques secondes puis 700 W), et avant que quoi que ce soit d'autre démarre
     (micro-ondes lancé 1 min après les plaques). Une seule règle, utilisée partout. None si on ne peut pas la lire."""
-    low = _low_start(prof)
-    if low:
-        return low[0], low[1], True
     n = len(prof)
     if n < 2:
         return None, 0, False
@@ -769,7 +630,7 @@ def _start(prof: list[int], spike: bool = True) -> tuple[float | None, int, bool
         if d >= EDGE_W and k > 2:             # un autre appareil démarre (une montée en 2 temps au début est la sienne)
             other = k < 10
             break
-        if spike and d < -max(10, 0.05 * prof[k - 1]) and k <= settle + 2:
+        if spike and d < -max(50, 0.05 * prof[k - 1]) and k <= settle + 2:
             last_fall = k                     # son pic retombe, parfois en escalier (1 414 → 942 → 789 → 692 W)
         elif d <= -EDGE_W:                    # plus tard, une grosse baisse : autre chose s'est arrêté
             break
@@ -828,32 +689,9 @@ def features(prof: list[int], hour: float) -> dict:
         "cv": round(cv, 3),
         "h": round(hour, 2),
         "wh": round(sum(prof) * STEP / 3600, 1),
-        "sig": _profile_signature(prof, peak=p),
     }
     f["shape"] = shape_of(f)
     return f
-
-
-def _profile_signature(prof: list[int], bins: int = 16, peak: float | None = None) -> list[float]:
-    """Résumé de la courbe entière, à durée normalisée, pour distinguer des usages au même pic."""
-    if not prof:
-        return [0.0] * bins
-    peak = max(1.0, peak or max(prof) or 1)
-    n = len(prof)
-    out = []
-    for i in range(bins):
-        a = min(n - 1, int(i * n / bins))
-        b = max(a + 1, int((i + 1) * n / bins))
-        values = [min(peak, max(0, v)) for v in prof[a:min(n, b)]]
-        out.append(round(sum(values) / len(values) / peak, 3))
-    return out
-
-
-def _signature_distance(a: dict, b: dict) -> float | None:
-    sa, sb = a.get("sig"), b.get("sig")
-    if not sa or not sb or len(sa) != len(sb):
-        return None
-    return math.sqrt(sum((x - y) ** 2 for x, y in zip(sa, sb)) / len(sa))
 
 
 def _hdiff(a, b):
@@ -864,8 +702,7 @@ def _hdiff(a, b):
 def power_scale(a: dict, b: dict) -> float:
     """Écart de puissance « normal » : 8 % (jamais moins de ±120 W : le frigo ou une veille la décalent un peu),
     ou plus pour un appareil dont on a vu qu'il varie (chauffage entre 650 et 860 W) : sa propre dispersion."""
-    power = max(a["P"], b["P"])
-    return max(0.08 * power, min(120, max(10, 0.25 * power)), 2 * a.get("sP", 0), 2 * b.get("sP", 0))
+    return max(0.08 * max(a["P"], b["P"]), 120, 2 * a.get("sP", 0), 2 * b.get("sP", 0))
 
 
 def dist(a: dict, b: dict) -> float:
@@ -878,9 +715,6 @@ def dist(a: dict, b: dict) -> float:
     s += 0.5 * ((a["cv"] - b["cv"]) / 0.25) ** 2
     # l'heure n'est qu'un indice : un appareil peut servir à toute heure (chauffage le matin au lieu du soir)
     s += 0.2 * (min(_hdiff(a["h"], b["h"]), 6) / 4) ** 2
-    shape_distance = _signature_distance(a, b)
-    if shape_distance is not None:
-        s += 0.35 * (shape_distance / 0.25) ** 2
     return math.sqrt(s)
 
 
@@ -897,9 +731,6 @@ def centroid(fs: list[dict], spread_from: list[dict] | None = None) -> dict | No
     ang = [f["h"] / 24 * 2 * math.pi for f in fs]
     h = math.atan2(sum(map(math.sin, ang)), sum(map(math.cos, ang))) / (2 * math.pi) * 24 % 24
     c = {k: med(k) for k in ("P", "D", "on", "cyc", "cv", "wh")}
-    sigs = [f["sig"] for f in fs if f.get("sig") and len(f["sig"]) == PROFILE_BINS]
-    if sigs:
-        c["sig"] = [engine_median([sig[k] for sig in sigs]) for k in range(PROFILE_BINS)]
     c["h"] = round(h, 2)
     c["shape"] = shape_of(c)
     # dispersion vue sur ses utilisations confirmées (écart médian), à partir de 2 : sa tolérance à lui
@@ -934,11 +765,8 @@ SPIKE_SEEN, SPIKE_PENALTY = 1.3, 6.0
 def start_spike(prof: list[int], level: float | None = None, before: float = 0) -> float | None:
     """Le pic de démarrage : le haut de la première minute divisé par le régime de l'appareil (chauffage à céramique : 2 fois).
     None quand on ne peut pas le lire (profil recoupé, à plat : son début réel n'est plus là)."""
-    low = _low_start(prof)
-    if len(prof) < 4 or (level is None and not low and len(set(prof)) <= 2):
+    if len(prof) < 4 or (level is None and len(set(prof)) <= 2):
         return None
-    if level is None and low:
-        level = low[0]
     on = [v for v in prof if v > 150] or list(prof)
     return round((max(prof[:4]) - before) / max(level or engine_median(on), 1), 2)
 
@@ -952,9 +780,6 @@ def _kernel(a: dict, b: dict) -> float:
     sa, sb = a.get("spike"), b.get("spike")
     if sa is not None and sb is not None and (sa >= SPIKE_SEEN) != (sb >= SPIKE_SEEN):
         z += SPIKE_PENALTY
-    shape_distance = _signature_distance(a, b)
-    if shape_distance is not None:
-        z += 0.75 * (shape_distance / 0.25) ** 2
     return math.exp(-0.5 * z)
 
 

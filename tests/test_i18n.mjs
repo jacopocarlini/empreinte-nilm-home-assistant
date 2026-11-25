@@ -93,7 +93,7 @@ for (const language of ["fr", "en", "it"]) {
   const active = runInNewContext(`${devicePage}\npageAppareils()`, context);
   assert.ok(active.includes(translate(language, "energyVisible")));
 }
-const reportPage = source.slice(source.indexOf("function reportDays()"), source.indexOf("function pageSettings()"));
+const reportPage = source.slice(source.indexOf("function reportDays()"), source.indexOf("// ---------- Rendu"));
 for (const language of ["fr", "en", "it"]) {
   const groups = [
     { id: "new", status: "nouveau", letter: "A", created: Date.now() / 1000, hyp: "Lave-linge" },

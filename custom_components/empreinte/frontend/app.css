@@ -261,8 +261,8 @@ table.t td.r,table.t th.r{text-align:right}
   .app{grid-template-columns:minmax(0,1fr)}
   .side{display:none}
   main{padding:18px 16px calc(84px + env(safe-area-inset-bottom))}
-  .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--border);padding:6px 4px calc(6px + env(safe-area-inset-bottom));overflow-x:auto}
-  .tabbar a{flex:1 0 62px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;color:var(--muted);text-decoration:none;padding:4px 0;position:relative}
+  .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--border);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+  .tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;color:var(--muted);text-decoration:none;padding:4px 0;position:relative}
   .tabbar a.on{color:var(--ink)}
   .tabbar .badge{position:absolute;top:0;left:calc(50% + 6px);height:16px;min-width:16px;font-size:10px;padding:0 4px}
   .mtop{display:flex!important}

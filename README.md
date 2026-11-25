@@ -45,9 +45,9 @@ Empreinte (French for *footprint*) watches the power of your **whole house** (a 
 
 ## How it works
 
-1. **Detect.** Every sudden rise above the configured threshold (350 W by default) means something switched on. Empreinte records its power, duration and shape: steady (kettle), thermostat (oven), steps (hob).
+1. **Detect.** Every sudden rise of more than 350 W means something switched on. Empreinte records its power, duration and shape: steady (kettle), thermostat (oven), steps (hob).
 2. **Group.** Similar switch-ons become "discoveries": "about 2 kW, 3 minutes, several times a day".
-3. **You name.** One click: "it's the kettle". You can also say live "this is the dishwasher right now", and it tracks it to the end, even among other appliances (except low-power plateaus, which are named after the event ends).
+3. **You name.** One click: "it's the kettle". You can also say live "this is the dishwasher right now", and it tracks it to the end, even among other appliances.
 4. **Recognise.** It shows its confidence as a percentage. When it is sure enough, **you** decide to add it to the Energy dashboard.
 
 ### You stay in control
@@ -79,9 +79,7 @@ Download `empreinte.zip` from the [latest release](https://github.com/nodyxstudi
 
 | Setting | What it does |
 |---|---|
-| **Panel language** | Set in the panel's **Settings** page or the integration options; French is the default. English and Italian also translate built-in appliance names. Other text may still be in French. |
-| **Detection threshold** | Set in the panel's **Settings** page (10–2,000 W; default 350 W). Smaller thresholds can reveal small loads but are more sensitive to noise and overlapping appliances. Changing either detection threshold reloads the integration and reanalyses retained history; events and labels may change or be lost, including events older than retained samples. Make a backup first. |
-| **Small-load threshold** | Set in the panel's **Settings** page or integration options (1–100 W; default 10 W). Detects increases relative to the preceding level, with at least 30 seconds of confirmation but no constant-power requirement. The effective threshold rises with measurement noise. A 60 W always-on baseline is not itself an appliance event; an additional increase can be. Variable loads are followed back towards their starting level, rather than stopped at a fraction of their peak. Detection does not guarantee identification. |
+| **Panel language** | French by default; French, English and Italian are available in the integration options. The panel and built-in entity labels follow this choice; your custom names are preserved. The settings form follows the Home Assistant language. |
 | **Smart plugs that already measure a device** | Their power is subtracted before the analysis, so the PC or TV is never mistaken for something else. |
 | **Air conditioner / heat pump** | Its compressor makes the curve go up and down: Empreinte ignores these small steps instead of inventing appliances. |
 | **Its energy meter** | It then gets its own smoothed line in the daily balance. |
@@ -111,9 +109,7 @@ Everything is computed on your machine. Empreinte sends nothing to the internet:
 
 ## Good to know
 
-- Empreinte detects power increases from the configured threshold (350 W by default). A lower threshold can reveal small loads but cannot guarantee individual identification, especially with overlapping appliances, noisy measurements or a running air conditioner. With the default threshold, a stable 60–180 W plateau immediately after a short spike may also be retained. Short interruptions up to 150 s are treated as part of the same event.
-- A plateau after a spike is an **inference**, not proof: a different small appliance might have started at the same time. Existing recorded events are not automatically reanalysed. If you name a group "Fridge", disable the separate fridge estimate to avoid counting the same consumption twice.
-- Low-power plateaus can be named live, but the name is applied when the event ends; dedicated tracking and live running sensors are not guaranteed for them.
+- Empreinte detects **starts above 350 W**. Small loads (chargers, lamps, routers) stay in the always-on background.
 - An appliance on for **less than 30 seconds** is often missed: the meter does not give enough readings.
 - It needs **a few uses** of each appliance before being really sure.
 - The hardest case: two appliances of similar power at the same time (oven and hob). That is what categories are for.

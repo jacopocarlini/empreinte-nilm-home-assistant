@@ -30,8 +30,7 @@
           "climate_entity": "Clim / pompe à chaleur",
           "climate_energy": "Son compteur d'énergie",
           "fridge_kwh_year": "Consommation du frigo",
-          "extra_lines": "Autres compteurs d'énergie estimés",
-          "plateau_w": "Variation minimale des petits appareils"
+          "extra_lines": "Autres compteurs d'énergie estimés"
         },
         "data_description": {
           "language": "La navigation et les dates du panneau sont traduites. D'autres textes et les noms des entités peuvent rester en français. La langue de Home Assistant détermine celle de ce formulaire.",
@@ -39,8 +38,7 @@
           "climate_entity": "Quand elle tourne, son compresseur fait monter et descendre la courbe : Empreinte ignore ces petits paliers au lieu d'inventer des appareils.",
           "climate_energy": "Son propre compteur de kWh, s'il existe : elle a alors sa ligne dans le bilan par jour.",
           "fridge_kwh_year": "kWh par an, sur son étiquette énergie. Trop discret pour être vu sur la courbe, il est estimé et retiré du « non identifié ». 0 = pas estimé.",
-          "extra_lines": "Par exemple des compteurs Powercalc (lampes, box internet, alarme) : retirés du « non identifié » dans le bilan, jamais ajoutés au tableau Énergie.",
-          "plateau_w": "Hausse minimale par rapport au niveau précédent, en watts. Confirmation sur au moins 30 secondes sans exiger une puissance constante ; le filtre antibruit peut relever le seuil effectif. 10 W par défaut."
+          "extra_lines": "Par exemple des compteurs Powercalc (lampes, box internet, alarme) : retirés du « non identifié » dans le bilan, jamais ajoutés au tableau Énergie."
         }
       },
       "init": {

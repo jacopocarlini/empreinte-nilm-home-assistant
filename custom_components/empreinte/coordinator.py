@@ -18,7 +18,7 @@ from homeassistant.util import dt as dt_util
 
 from . import engine
 from .engine import engine_median
-from .const import (APPLIANCE_TIPS, CLIM_LAG_KWH, PROGRAMME_GAP_S, TIP_IDS, CLIM_MAX_W, VEILLE_NAME, HYP_MIN_DAYS, HYP_MIN_N, HYP_MIN_SCORE, AUTO_NAME_COHERENCE, AUTO_NAME_DAYS, AUTO_NAME_MARGIN, AUTO_NAME_MIN, AUTO_NAME_SCORE, BACKFILL_DAYS, CONF_CLIMATE, CONF_CLIMATE_ENERGY, CONF_DETECTION_W, DEFAULT_DETECTION_W, MIN_DETECTION_W, MAX_DETECTION_W, CONF_PLATEAU_W, DEFAULT_PLATEAU_W, MIN_PLATEAU_W, MAX_PLATEAU_W, CONF_EXTRA_LINES, CONF_FRIDGE_KWH, CONF_LANGUAGE, CONF_MEASURED, CONF_SHARED, CONF_POWER_ENTITY, DEFAULT_LANGUAGE, LANGUAGES, DATA_DIR, DB_FILE, DOMAIN,
+from .const import (APPLIANCE_TIPS, CLIM_LAG_KWH, PROGRAMME_GAP_S, TIP_IDS, CLIM_MAX_W, VEILLE_NAME, HYP_MIN_DAYS, HYP_MIN_N, HYP_MIN_SCORE, AUTO_NAME_COHERENCE, AUTO_NAME_DAYS, AUTO_NAME_MARGIN, AUTO_NAME_MIN, AUTO_NAME_SCORE, BACKFILL_DAYS, CONF_CLIMATE, CONF_CLIMATE_ENERGY, CONF_EXTRA_LINES, CONF_FRIDGE_KWH, CONF_LANGUAGE, CONF_MEASURED, CONF_SHARED, CONF_POWER_ENTITY, DEFAULT_LANGUAGE, LANGUAGES, DATA_DIR, DB_FILE, DOMAIN,
                     EVENTS_SENT_DAYS, PROCESS_EVERY_S, SAMPLES_KEEP_DAYS)
 from .shared import ON_W as SHARED_ON_W, SharedPlugs
 from .store import Store
@@ -31,7 +31,7 @@ MENAGER_RE = re.compile(r"lave[- ]?linge|lave[- ]?vaisselle|s[eè]che[- ]?linge|
 
 _LOGGER = logging.getLogger(__name__)
 PROFILE_MAX_POINTS = 120
-RESEGMENT_KEY = "resegment_v9"   # à changer quand la façon de mesurer change : tout est re-mesuré
+RESEGMENT_KEY = "resegment_v7"   # à changer quand la façon de mesurer change : tout est re-mesuré
 
 
 def _slug(s: str) -> str:
@@ -62,9 +62,7 @@ class Live:
     Un arrêt de moins de GAP_S (thermostat d'un four) ne compte pas comme une fin.
     """
 
-    def __init__(self, min_edge=engine.EDGE_W, plateau_w=DEFAULT_PLATEAU_W):
-        self.plateau_w = plateau_w
-        self.min_edge = min_edge
+    def __init__(self):
         self.prev = None
         self.running: dict[str, dict] = {}   # gid -> {start, power, off_since, floor}
         self.waiting: dict[str, dict] = {}   # sauts qui ressemblent à un appareil, à confirmer (voir LIVE_CONFIRM_S)
@@ -83,10 +81,9 @@ class Live:
             self.edges.popleft()
         if self.prev is not None:
             d = p - self.prev
-            if abs(d) >= self.min_edge:
+            if abs(d) >= engine.EDGE_W:
                 self.edges.append((t, d))
-            small_known = any(c.get("P", 0) < self.min_edge for c in cents.values())
-            if d >= self.min_edge or (small_known and d >= self.plateau_w):
+            if d >= engine.EDGE_W:
                 gid = self._best(d, {g: c["P"] for g, c in cents.items()
                                      if g not in self.running or self.running[g]["off_since"]}, 0.18)
                 if gid:
@@ -98,28 +95,23 @@ class Live:
                         del self.running[gid]             # un appareil qui ne clignote pas, qui s'éteint et se rallume :
                         changed = True                    # c'était autre chose (plaques, four…)
                     elif gid not in self.waiting:
-                        self.waiting[gid] = {"start": t, "power": d, "off_since": None,
-                                             "floor": self.prev if d < self.min_edge else floor, "before": self.prev}
-            elif d <= -self.min_edge or (
-                    any(r["power"] < self.min_edge for r in self.running.values()) and d <= -self.plateau_w):
+                        self.waiting[gid] = {"start": t, "power": d, "off_since": None, "floor": floor, "before": self.prev}
+            elif d <= -engine.EDGE_W:
                 on = {g: r["power"] for g, r in self.running.items() if not r["off_since"]}
                 gid = self._best(-d, on, 0.25)
-                if gid and (self.running[gid]["power"] >= self.min_edge
-                            or p <= self.running[gid]["floor"] + 0.5 * self.plateau_w):
+                if gid:
                     self.running[gid]["off_since"] = t
                     changed = True
-                elif not gid and on and abs(sum(on.values()) + d) <= max(min(250, 0.25 * sum(on.values())), 0.25 * -d):
+                elif on and abs(sum(on.values()) + d) <= max(250, 0.25 * -d):
                     for g in on:
-                        if self.running[g]["power"] >= self.min_edge or p <= self.running[g]["floor"] + 0.5 * self.plateau_w:
-                            self.running[g]["off_since"] = t
-                            changed = True
+                        self.running[g]["off_since"] = t
+                    changed = True
         # À confirmer : le pic de démarrage d'un chauffage est passé après 1 min. Si la puissance reste bien plus haute,
         # le saut n'était que le début d'un plus gros appareil (une valeur reçue en pleine montée) : ce n'est pas lui.
         for g, r in list(self.waiting.items()):
-            off = 0.5 * (self.plateau_w if r["power"] < self.min_edge else r["power"])
-            if p < r["floor"] + off:
+            if p < r["floor"] + 0.5 * r["power"]:
                 del self.waiting[g]
-            elif t - r["start"] >= (engine.SMALL_CONFIRM_S if r["power"] < self.min_edge else LIVE_CONFIRM_S):
+            elif t - r["start"] >= LIVE_CONFIRM_S:
                 del self.waiting[g]
                 step = p - r["before"]
                 if step <= 1.6 * r["power"] and g in cents and not self._closer_other(step, cents[g]["P"], others)                         and not self._cycling(r, cents[g]):
@@ -127,8 +119,7 @@ class Live:
                     changed = True
         # la courbe est revenue à son fond : quoi qu'il se soit passé, il ne peut plus tourner
         for g, r in self.running.items():
-            off = 0.5 * (self.plateau_w if r["power"] < self.min_edge else r["power"])
-            if not r["off_since"] and "floor" in r and p < r["floor"] + off:
+            if not r["off_since"] and "floor" in r and p < r["floor"] + 0.5 * r["power"]:
                 r["off_since"] = t
                 changed = True
         for g in [g for g, r in self.running.items()
@@ -176,18 +167,6 @@ class Coordinator:
         if self.language not in LANGUAGES:
             _LOGGER.warning("Empreinte : langue inconnue %r, français utilisé", self.language)
             self.language = DEFAULT_LANGUAGE
-        threshold = opts.get(CONF_DETECTION_W, DEFAULT_DETECTION_W)
-        if isinstance(threshold, bool) or not isinstance(threshold, int) or not MIN_DETECTION_W <= threshold <= MAX_DETECTION_W:
-            _LOGGER.warning("Empreinte: invalid detection threshold %r, using %s W", threshold, DEFAULT_DETECTION_W)
-            threshold = DEFAULT_DETECTION_W
-        self.detection_w = threshold
-        self.edge_w = min(engine.EDGE_W, threshold)
-        self.off_w = min(engine.OFF_W, threshold * engine.OFF_W / engine.ON_W)
-        plateau = opts.get(CONF_PLATEAU_W, DEFAULT_PLATEAU_W)
-        if isinstance(plateau, bool) or not isinstance(plateau, int) or not MIN_PLATEAU_W <= plateau <= MAX_PLATEAU_W:
-            _LOGGER.warning("Empreinte: invalid plateau threshold %r, using %s W", plateau, DEFAULT_PLATEAU_W)
-            plateau = DEFAULT_PLATEAU_W
-        self.plateau_w = plateau
         self.power_entity = entry.data.get(CONF_POWER_ENTITY)
         self.climate_entity = opts.get(CONF_CLIMATE) or None          # réglages facultatifs (voir const.py)
         self.clim_energy = opts.get(CONF_CLIMATE_ENERGY) or None
@@ -205,7 +184,7 @@ class Coordinator:
         self.processed_until = 0.0
         self.last_run = None
         self.last_error = None
-        self.live = Live(self.edge_w, self.plateau_w)
+        self.live = Live()
         self.lock = asyncio.Lock()
         self.undo: list = []           # pile d'annulation (20 niveaux)
         self.add_entities = {}
@@ -288,13 +267,8 @@ class Coordinator:
         self._t_load = time.time()
         self.ranking: dict = {}
         self.advice: dict = {}
-        previous_threshold = self.store.get_meta("detection_w", DEFAULT_DETECTION_W)
-        previous_plateau = self.store.get_meta(CONF_PLATEAU_W, DEFAULT_PLATEAU_W)
-        if (not self.store.get_meta(RESEGMENT_KEY) or previous_threshold != self.detection_w
-                or previous_plateau != self.plateau_w):
+        if not self.store.get_meta(RESEGMENT_KEY):
             self._resegment()
-        self.store.set_meta("detection_w", self.detection_w)
-        self.store.set_meta(CONF_PLATEAU_W, self.plateau_w)
         self._renum = self.store.get_meta("renumber", [])
         self._sub_since = self.store.get_meta("sub_since", 0) or self._sub_since
         if not self.store.get_meta("split_v1"):
@@ -302,14 +276,11 @@ class Coordinator:
         seen, dups = set(), []
         for r in self.store.events():
             # Un redémarrage de HA en pleine analyse peut enregistrer deux fois la même utilisation.
-            key = (round(r["start"]), round(r["f"]["P"], -2 if self.detection_w >= 300 else 0))
+            key = (round(r["start"]), round(r["f"]["P"], -2))
             if key in seen:
                 dups.append(r["id"])
                 continue
             seen.add(key)
-            if "sig" not in r["f"]:
-                r["f"]["sig"] = engine._profile_signature(r["prof"], peak=r["f"].get("P"))
-                self.store.update_event(r["id"], r["start"], r["end"], r["prof"], r["f"])
             self.rows[r["id"]] = {k: r[k] for k in ("start", "end", "base", "prof")}
             self.evs.append(engine.Ev(r["id"], r["f"], r["gid"], r["pinned"], r["excluded"]))
         if dups:
@@ -1267,8 +1238,8 @@ class Coordinator:
             return
         ts = [r[0] for r in rows]
         # les prises mesurées (PC…) ne comptent pas ; leur décalage avec le compteur est corrigé
-        ps = engine.realign(ts, [r[1] for r in rows], [r[2] for r in rows], self.edge_w)
-        found, open_start = engine.segment(ts, ps, self.detection_w, self.plateau_w)
+        ps = engine.realign(ts, [r[1] for r in rows], [r[2] for r in rows])
+        found, open_start = engine.segment(ts, ps)
         # une montée lente pendant que la clim tourne : c'est elle qui monte en puissance, pas un appareil
         found = [e for e in found if not (e.get("creep") and e["start"] <= self._clim_until)]
         self.running_parts = [x for x in (self._live_parts(ts, ps, open_start) if open_start else [])
@@ -1385,7 +1356,7 @@ class Coordinator:
         """Un appareil déjà connu et long (four, lave-vaisselle…) qui démarre est suivi tout seul, mais
         seulement si c'est net : pour une ressemblance moins nette, il est seulement proposé."""
         for x in self.running_parts:
-            if x["end"] or x.get("low") or x["p"] < engine.EDGE_W or not x.get("hint_group"):
+            if x["end"] or not x.get("hint_group"):
                 continue
             # on attend que le pic de démarrage soit passé : un chauffage à céramique tire 1,6 kW quelques secondes
             # (la puissance du lave-vaisselle) avant de se stabiliser vers 800 W
@@ -1702,12 +1673,8 @@ class Coordinator:
     def _other_piece(self, e, p, ivs) -> bool:
         """Un morceau déjà isolé comme un appareil à part (ses propres montée et descente, ou un autre appareil suivi
         jusqu'à son arrêt), qui ne démarre pas avec l'appareil suivi : c'est un autre appareil, même de puissance voisine."""
-        start = self.rows[e.id]["start"]
-        if not (e.f.get("split") or e.f.get("tracked")) or self._owns_start(start, ivs):
-            return False
-        same_power = abs(e.f["P"] - p) / max(e.f["P"], p) <= 0.15
-        track_start = min((a for a, _ in ivs), default=start)
-        return start >= track_start - 45 or not same_power
+        same_power = abs(e.f["P"] - p) / max(e.f["P"], p) <= 0.15        # c'est lui, commencé avant le suivi
+        return bool(e.f.get("split") or e.f.get("tracked")) and not self._owns_start(self.rows[e.id]["start"], ivs)             and not same_power
 
     def _finish_track(self, tr, ivs, cut=False):
         """L'appareil suivi est éteint : une seule utilisation, retirée des morceaux qui le contenaient."""
@@ -1736,9 +1703,9 @@ class Coordinator:
                     if rest[k] <= 2 * tr["p"]:
                         rest[k] = 0
                     k += 1
-            rest = engine.clean_rest(rest, min_level=max(1, self.plateau_w * 0.5))
-            keep = [k for k, v in enumerate(rest) if v >= min(100, self.detection_w, self.plateau_w)]
-            if not keep or max(rest) < min(self.detection_w, self.plateau_w):
+            rest = engine.clean_rest(rest)
+            keep = [k for k, v in enumerate(rest) if v >= 100]
+            if not keep or max(rest) < engine.ON_W:
                 self.store.delete_events([e.id])
                 self.evs.remove(e)
                 del self.rows[e.id]
@@ -1784,8 +1751,7 @@ class Coordinator:
         pre = [p for t, p in zip(ts, ps) if open_start - engine.PRE_S <= t < open_start] or [ps[max(0, i0 - 1)]]
         prof = engine.profile(ts, ps, i0, open_start, ts[-1] + engine.STEP, engine.engine_median(pre))
         out = []
-        edge = min(self.edge_w, self.plateau_w) if max(prof, default=0) < self.detection_w else self.edge_w
-        for c in engine.live_parts(prof, edge):
+        for c in engine.live_parts(prof):
             start = open_start + c["k0"] * engine.STEP
             loc = dt_util.as_local(dt_util.utc_from_timestamp(start))
             f = {"P": c["h"], "D": max(engine.STEP, (c["k1"] - c["k0"]) * engine.STEP), "on": 1 if c["n"] == 1 else 0.6,
@@ -1793,8 +1759,7 @@ class Coordinator:
             f["shape"] = engine.shape_of(f)
             hint, hint_group = self._hint_for(f)
             out.append({"start": start, "end": None if c["running"] else open_start + c["k1"] * engine.STEP,
-                        "p": c["h"], "n": c["n"], "hint": hint, "hint_group": hint_group,
-                        **({"low": True} if c.get("low") else {})})
+                        "p": c["h"], "n": c["n"], "hint": hint, "hint_group": hint_group})
         return out
 
     def _hint_for(self, f):
@@ -1803,7 +1768,7 @@ class Coordinator:
         for gid, c in self.cents.items():
             g = self.groups.get(gid)
             if g and g.get("name"):
-                d = abs(f["P"] - c["P"]) / engine.power_scale(f, c)
+                d = abs(f["P"] - c["P"]) / max(0.08 * max(f["P"], c["P"]), 120)
                 if d < bd:
                     best, bd = gid, d
         if best:
@@ -1823,10 +1788,7 @@ class Coordinator:
     def _parts(self, e, min_edge=None) -> list[dict]:
         """Une utilisation, ou plusieurs si deux appareils tournaient en même temps."""
         # quand une clim tourne, les sauts de son compresseur ne sont pas des appareils qui démarrent ou s'arrêtent
-        edge = min_edge or (CLIM_MAX_W if e["start"] <= self._clim_until else self.edge_w)
-        if max(e["prof"], default=0) < self.detection_w:
-            edge = min(edge, self.plateau_w)
-        pieces = engine.split_session(e["prof"], edge, min(self.detection_w, self.plateau_w))
+        pieces = engine.split_session(e["prof"], min_edge or (CLIM_MAX_W if e["start"] <= self._clim_until else engine.EDGE_W))
         out = []
         for k0, prof in pieces:
             start = e["start"] + k0 * engine.STEP
@@ -1835,8 +1797,7 @@ class Coordinator:
             if len(pieces) > 1:
                 f["split"] = True
                 # le morceau est recoupé à plat : son pic se lit sur la courbe d'origine, au-dessus de ce qui tournait déjà
-                level = f["P"] if engine._low_start(prof) else max(prof)
-                f["spike"] = engine.start_spike(e["prof"][k0:k0 + 4], level, e["prof"][k0 - 1] if k0 else 0)
+                f["spike"] = engine.start_spike(e["prof"][k0:k0 + 4], max(prof), e["prof"][k0 - 1] if k0 else 0)
             else:
                 f["spike"] = engine.start_spike(prof)
             out.append({"start": start, "end": start + len(prof) * engine.STEP, "base": e["base"], "prof": prof, "f": f})
@@ -1987,10 +1948,10 @@ class Coordinator:
                     j = round((ro["start"] + k * engine.STEP - rk["start"]) / engine.STEP)
                     if 0 <= j < len(rk["prof"]):
                         rest[k] = max(0, rest[k] - rk["prof"][j])
-                rest = engine.clean_rest(rest, min_level=max(1, self.plateau_w * 0.5))
+                rest = engine.clean_rest(rest)
                 fixed += 1
-                kept = [k for k, v in enumerate(rest) if v >= min(100, self.detection_w, self.plateau_w)]
-                if not kept or max(rest) < min(self.detection_w, self.plateau_w):
+                kept = [k for k, v in enumerate(rest) if v >= 100]
+                if not kept or max(rest) < engine.ON_W:
                     self.store.delete_events([other.id])
                     self.evs.remove(other)
                     del self.rows[other.id]
@@ -2343,10 +2304,8 @@ class Coordinator:
             at, pw = msg.get("at"), msg.get("p") or 1
             running = at and any(abs(x["start"] - at) <= 60 and abs(x["p"] - pw) / max(x["p"], pw) <= 0.35 and not x["end"]
                                  for x in self.running_parts)
-            low = pw < engine.EDGE_W or any(x.get("low") and abs(x["start"] - at) <= 60
-                      and abs(x["p"] - pw) / max(x["p"], pw) <= 0.35 for x in self.running_parts) if at else False
             started = bool(running and not msg.get("maybe") and self.open_start is not None and at >= self.open_start - 60
-                           and not low and self._start_track(msg["name"].strip()[:40], at, pw, user=True))
+                           and self._start_track(msg["name"].strip()[:40], at, pw, user=True))
             if not started:
                 self.pending.append({"t": time.time(), "name": msg["name"].strip()[:40], "maybe": bool(msg.get("maybe")),
                                      "at": at, "p": msg.get("p")})
@@ -2508,9 +2467,7 @@ class Coordinator:
         boxes = [e for e in self.evs if self.rows[e.id]["start"] - 30 <= at <= self.rows[e.id]["end"]]
         for box in sorted(boxes, key=lambda e: self.rows[e.id]["end"] - self.rows[e.id]["start"], reverse=True):
             r = self.rows[box.id]
-            edge = min(self.edge_w, self.plateau_w) if max(r["prof"], default=0) < self.detection_w else self.edge_w
-            threshold = min(self.detection_w, self.plateau_w) if max(r["prof"], default=0) < self.detection_w else self.detection_w
-            res = engine.extract_component(r["prof"], round((at - r["start"]) / engine.STEP), power, edge, threshold)
+            res = engine.extract_component(r["prof"], round((at - r["start"]) / engine.STEP), power)
             if not res:
                 continue
             k0, part, rest = res
@@ -2523,8 +2480,8 @@ class Coordinator:
             ev = engine.Ev(eid, f)
             self.evs.append(ev)
             # le reste de l'utilisation mélangée garde sa place, recalculé sans cet appareil
-            keep = [k for k, v in enumerate(rest) if v >= min(100, self.detection_w, self.plateau_w)]
-            if not keep or max(rest) < min(self.detection_w, self.plateau_w):
+            keep = [k for k, v in enumerate(rest) if v >= 100]
+            if not keep or max(rest) < engine.ON_W:
                 self.store.delete_events([box.id])
                 self.evs.remove(box)
                 del self.rows[box.id]
@@ -2575,7 +2532,7 @@ class Coordinator:
                            "shape": c["shape"] if c else None, "entities": self.entity_ids(g["id"])})
         return {
             "groups": groups, "events": evs, "kinds": {**{k: v[0] for k, v in engine.KINDS.items()}, **self.learned_labels},
-            "status": {"language": self.language, "detection_w": self.detection_w, "plateau_w": self.plateau_w, "verdicts": self._verdict_summary(), "categories": [{**{k: v for k, v in c.items() if k != "counted"}, "power": self.cat_power(c["id"])} for c in self.cats],
+            "status": {"language": self.language, "verdicts": self._verdict_summary(), "categories": [{**{k: v for k, v in c.items() if k != "counted"}, "power": self.cat_power(c["id"])} for c in self.cats],
                        "energy_log": [{**x, "entity": self._energy_entity(x["target"]), "in_dash": self._in_dash(x["target"])}
                                       for x in self.energy_log[-200:]], "last_run": self.last_run, "error": self.last_error, "n_events": len(self.evs),
                        "first_sample": self._first, "power_entity": self.power_entity,
@@ -2630,7 +2587,7 @@ class Coordinator:
             if e.pinned and e.id not in self.doubts:
                 s.append(1.0)
                 continue
-            dp = abs(e.f["P"] - c["P"]) / engine.power_scale(e.f, c)
+            dp = abs(e.f["P"] - c["P"]) / max(0.08 * max(e.f["P"], c["P"]), 120)
             s.append(engine.similarity(dp) * (1 if e.f["shape"] == c["shape"] else 0.7) * (0.5 if e.id in self.doubts else 1))
         n, errors = len(mem), sum(1 for e in self.evs if gid in e.excluded)
         return round(sum(s) / n * min(1, n / 8) ** 0.5 * n / (n + 2 * errors), 3)
@@ -2696,12 +2653,10 @@ class Coordinator:
                 self.add_entities["sensor"](ents[1:])
         self._drop_old_shared(want)
         dev_reg = dr.async_get(self.hass)
-        from .text import display_appliance
         for gid, g in self.groups.items():
             dev = self._device(gid)
-            name = display_appliance(self, g["name"])
-            if dev and name and dev.name != name:
-                dev_reg.async_update_device(dev.id, name=name)
+            if dev and g["name"] and dev.name != g["name"]:
+                dev_reg.async_update_device(dev.id, name=g["name"])
 
     @callback
     def _drop_old_shared(self, want: set):

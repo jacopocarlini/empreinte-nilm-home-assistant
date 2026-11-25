@@ -93,7 +93,6 @@ const IC = {
   map: '<path d="M3 3v18h18"/><circle cx="8" cy="14" r="1.6"/><circle cx="12" cy="9" r="1.6"/><circle cx="16.5" cy="13" r="1.6"/><circle cx="18" cy="6" r="1.6"/>',
   zap: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
   report: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 18v-3M12 18v-6M16 18v-4"/>',
-  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
   oven: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M3 8.5h18"/><rect x="7" y="12" width="10" height="5.5" rx="1"/><path d="M7 5.8h.01M10.5 5.8h.01"/>',
   heater: '<path d="M4 20h16M6 20V8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12M9.5 9v8M12 9v8M14.5 9v8"/>',
   tank: '<rect x="6" y="2" width="12" height="20" rx="5"/><path d="M12 8.5c-1.6 2-2.2 3.1-2.2 4.2a2.2 2.2 0 0 0 4.4 0c0-1.1-.6-2.2-2.2-4.2z"/>',
@@ -427,15 +426,6 @@ async function confirmGroup(gid, name) {
 }
 const validateGroup = gid => confirmGroup(gid);
 const dissolveGroup = async gid => { const n = gname(G(gid)); await act({ action: "delete", gid }, tr("groupDeleted", { name: n })); go("#/decouvertes"); };
-const deleteApplianceModal = gid => {
-  const g = G(gid);
-  if (!g) return;
-  openModal(`<h2>${esc(tr("deleteAppliance"))}</h2>
-    <p class="sub">${esc(tr("deleteApplianceDescription", { name: gname(g) }))}</p>
-    <div class="acts"><button class="btn ghost" data-close>${tr("cancel")}</button><button class="btn sm ghost" id="delete-appliance">${icon("trash")} ${tr("delete")}</button></div>`, (b, close) => {
-      $("#delete-appliance", b).onclick = () => { close(); dissolveGroup(gid); };
-  });
-};
 
 // ---------- Fenêtres, menus, toasts
 let toastT;
@@ -557,7 +547,7 @@ function validateModal(gid) {
 }
 
 // ---------- Navigation
-const PAGES = [["apercu", "overview", "home"], ["decouvertes", "discoveries", "spark"], ["habitudes", "habits", "clock"], ["carte", "map", "map"], ["appareils", "appliances", "zap"], ["rapport", "report", "report"], ["parametres", "settings", "settings"]];
+const PAGES = [["apercu", "overview", "home"], ["decouvertes", "discoveries", "spark"], ["habitudes", "habits", "clock"], ["carte", "map", "map"], ["appareils", "appliances", "zap"], ["rapport", "report", "report"]];
 // Navigation interne : HA affiche le panneau dans une iframe où les liens « # » ne marchent pas.
 let CUR = "#/apercu";
 function go(h) {
@@ -721,11 +711,10 @@ function pageDecouvertes() {
   const unk = members(null);
   const by = (a, b) => gstats(b.id).n - gstats(a.id).n;
   const empty = !S.groups.length;
-  const threshold = S.status.detection_w ?? 350;
   return `
   <div class="page-h"><div><h1>${tr("discoveries")}</h1><p class="sub">${tr("discoveriesDescription")}</p></div></div>
   <div class="card"><div class="how">
-    <div><span class="n">1</span><span><b>${tr("introDetect")}</b>${tr("discoverDetect", { threshold })}</span></div>
+    <div><span class="n">1</span><span><b>${tr("introDetect")}</b>${tr("discoverDetect")}</span></div>
     <div><span class="n">2</span><span><b>${tr("discoverGroup")}</b>${tr("discoverGroupDescription")}</span></div>
     <div><span class="n">3</span><span><b>${tr("introName")}</b>${tr("discoverName")}</span></div>
     <div><span class="n">4</span><span><b>${tr("introRecognise")}</b>${tr("discoverRecognise")}</span></div>
@@ -860,7 +849,7 @@ function mountGroupe(gid, q) {
 // ---------- Page : Habitudes
 const cap = s => s[0].toUpperCase() + s.slice(1);
 function pageHabitudes() {
-  const hs = findHabits(EVENTS, dayOf, NDAYS, gid => !!(G(gid) && G(gid).name), S.status.plateau_w ?? S.status.detection_w ?? 350);
+  const hs = findHabits(EVENTS, dayOf, NDAYS, gid => !!(G(gid) && G(gid).name));
   // ce que tu as déjà nommé se range en bas : seules les habitudes encore inconnues restent en grand
   const known = hs.filter(hb => G(hb.gid) && G(hb.gid).name), todo = hs.filter(hb => !(G(hb.gid) && G(hb.gid).name));
   const perHour = Array(24).fill(0); EVENTS.forEach(e => { if (dayOf(e.start) >= 0) perHour[new Date(e.start).getHours()]++; });
@@ -1049,12 +1038,7 @@ function pageAppareils() {
         ? `<div class="banner">${icon("check")}<div class="grow">${esc(tr("categoryCounted", { name: categoryName((S.status.categories || []).find(c => c.id === g.cat)) }))}</div></div>`
         : g.status === "valide" ? energyBlock(g) : ""}
       ${g.status === "valide" ? `<div class="ent">${(g.entities || []).map(id => `<div><b>${esc(id)}</b><span>${esc(stateOf(id))}</span></div>`).join("") || `<div>${tr("sensorsCreating")}</div>`}</div>`
-        : ""}
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a class="btn sm" href="#/groupe/${g.id}">${tr("viewUses")}</a>
-        ${g.status === "valide" ? "" : `<button class="btn sm primary" data-val="${g.id}">${icon("check")} ${tr("validate")}</button>`}
-        <button class="btn sm ghost" data-delete-appliance="${g.id}">${icon("trash")} ${tr("delete")}</button>
-      </div>
+        : `<div style="display:flex;gap:8px"><a class="btn sm" href="#/groupe/${g.id}">${tr("viewUses")}</a><button class="btn sm primary" data-val="${g.id}">${icon("check")} ${tr("validate")}</button></div>`}
     </div>`;
   }).join("")}</div>`;
 }
@@ -1131,59 +1115,6 @@ function mountRapport() {
   $$("#heat i[data-l]").forEach(c => { if (c.dataset.v === "") return; c.onpointerenter = ev => showTip(ev, `<div class="t">${esc(c.dataset.l)}</div><div class="r"><span>${tr("reportConsumed")}</span><b>${fmtKwh(+c.dataset.v)}</b></div>`); c.onpointermove = moveTip; c.onpointerleave = hideTip; });
 }
 
-function pageSettings() {
-  const threshold = S.status.detection_w ?? 350;
-  const plateau = S.status.plateau_w ?? 10;
-  return `<div class="page-h"><div><h1>${tr("settings")}</h1><p class="sub">${tr("settingsDescription")}</p></div></div>
-    <form class="card stack" id="settings-form" style="max-width:640px;gap:14px">
-      <label for="settings-language">${tr("settingsLanguage")}</label>
-      <select class="field" id="settings-language">
-        ${[["fr", "Français"], ["en", "English"], ["it", "Italiano"]].map(([value, label]) => `<option value="${value}" ${language === value ? "selected" : ""}>${label}</option>`).join("")}
-      </select>
-      <label for="settings-threshold">${tr("settingsThreshold")} (W)</label>
-      <input class="field" id="settings-threshold" type="number" min="10" max="2000" step="1" required value="${esc(threshold)}">
-      <p class="sub">${tr("settingsThresholdHelp")}</p>
-      <label for="settings-plateau">${tr("settingsPlateau")} (W)</label>
-      <input class="field" id="settings-plateau" type="number" min="1" max="100" step="1" required value="${esc(plateau)}">
-      <p class="sub">${tr("settingsPlateauHelp")}</p>
-      <p class="sub">${tr("settingsHistoryWarning")}</p>
-      <div><button class="btn primary" type="submit">${tr("save")}</button></div>
-      <div id="settings-result" role="status"></div>
-    </form>`;
-}
-
-function mountSettings() {
-  $("#settings-form").onsubmit = async e => {
-    e.preventDefault();
-    const form = e.currentTarget, button = form.querySelector("button");
-    const selected = $("#settings-language", form).value;
-    const raw = $("#settings-threshold", form).value, threshold = Number(raw);
-    const rawPlateau = $("#settings-plateau", form).value, plateau = Number(rawPlateau);
-    if (!raw || !Number.isInteger(threshold) || threshold < 10 || threshold > 2000) {
-      $("#settings-result", form).textContent = tr("settingsInvalidThreshold");
-      return;
-    }
-    if (!rawPlateau || !Number.isInteger(plateau) || plateau < 1 || plateau > 100) {
-      $("#settings-result", form).textContent = tr("settingsInvalidPlateau");
-      return;
-    }
-    button.disabled = true;
-    try {
-      await call({ type: "empreinte/settings", language: selected, detection_w: threshold, plateau_w: plateau });
-      setLanguage(selected);
-      S.status.language = selected;
-      S.status.detection_w = threshold;
-      S.status.plateau_w = plateau;
-      $("#settings-result", form).textContent = tr("settingsSaved");
-      renderNav();
-    } catch (err) {
-      $("#settings-result", form).textContent = tr("error") + ": " + (err.message || err.code || String(err));
-    } finally {
-      button.disabled = false;
-    }
-  };
-}
-
 // ---------- Rendu
 let renderSeq = 0;
 async function render() {
@@ -1207,7 +1138,6 @@ async function render() {
     v.innerHTML = pageAppareils();
     bindShared();
     $$("[data-val]").forEach(b => b.onclick = () => validateModal(b.dataset.val));
-    $$("[data-delete-appliance]").forEach(b => b.onclick = () => deleteApplianceModal(b.dataset.deleteAppliance));
     $$("[data-energy-on]").forEach(b => b.onclick = () => act({ action: "energy_add", gid: b.dataset.energyOn }, tr("namedAddedEnergy", { name: gname(G(b.dataset.energyOn)) })));
     $$("[data-energy-off]").forEach(b => b.onclick = () => act({ action: "energy_remove", gid: b.dataset.energyOff }, tr("namedRemovedEnergy", { name: gname(G(b.dataset.energyOff)) })));
     const category = cid => (S.status.categories || []).find(c => c.id === cid);
@@ -1222,13 +1152,8 @@ async function render() {
     if ($("#b-cat-new")) $("#b-cat-new").onclick = () => nameModal(tr("createCategory"), "", n => act({ action: "cat_create", name: n }, tr("categoryCreated", { name: n })));
   }
   else if (page === "rapport") { v.innerHTML = pageRapport(); mountRapport(); }
-  else if (page === "parametres") { v.innerHTML = pageSettings(); mountSettings(); }
   else { v.innerHTML = pageApercu(); mountApercu(); }
-  $$("[data-go]", v).forEach(el => el.addEventListener("click", e => {
-    if (el.matches("button,a")) { go(el.dataset.go); return; }
-    if (e.target.closest("button,a,input")) return;
-    go(el.dataset.go);
-  }));
+  $$("[data-go]", v).forEach(el => el.addEventListener("click", e => { if (e.target.closest("button,a,input")) return; go(el.dataset.go); }));
 }
 function redrawCharts() {
   if ($("#daychart")) drawDay($("#daychart"));
@@ -1250,11 +1175,10 @@ function applyTheme() {
 // ---------- Accueil : montré une fois, au premier lancement (et à tout moment avec le bouton ?)
 function introModal() {
   try { localStorage.setItem("empreinte-intro", "1"); } catch (e) { }
-  const threshold = S.status.detection_w ?? 350;
   const step = (n, t, d) => `<div style="display:flex;gap:12px;margin-top:14px"><div class="gicon" style="background:var(--good);flex:none;color:#fff;font-weight:700">${n}</div><div><b>${t}</b><p class="sub" style="font-size:13px">${d}</p></div></div>`;
   openModal(`<h2>${tr("introTitle")}</h2>
     <p class="sub">${tr("introDescription")}</p>
-    ${step(1, tr("introDetect"), tr("introDetectText", { threshold }))}
+    ${step(1, tr("introDetect"), tr("introDetectText"))}
     ${step(2, tr("introName"), tr("introNameText"))}
     ${step(3, tr("introRecognise"), tr("introRecogniseText"))}
     ${step(4, tr("introValidate"), tr("introValidateText"))}
@@ -1287,7 +1211,7 @@ export function start(h) {
   }).catch(err => { S.error = err.message || err.code || String(err); render(); });
   // Mise à jour discrète toutes les minutes (sauf si l'utilisateur est en train de sélectionner)
   setInterval(async () => {
-    if (document.hidden || S.sel.size || $(".modal-back") || menuEl || route().page === "parametres") return;
+    if (document.hidden || S.sel.size || $(".modal-back") || menuEl) return;
     try { await refresh(); const y = window.scrollY; await render(); window.scrollTo(0, y); } catch (e) { }
   }, 60e3);
   return {

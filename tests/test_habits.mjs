@@ -35,11 +35,6 @@ hs = findHabits(evs, dayOf, 3, named);
 check("Deux appareils nommés à la même heure donnent deux habitudes distinctes",
   hs.length === 2 && hs.every(h => h.ids.every(id => evs.find(e => e.id === id).gid === h.gid)), `(${hs.map(h => h.gid)})`);
 
-evs = [0, 1, 2].map(d => ({ id: `small${d}`, start: at(d, 22, 10), p: 18, dur: 300, gid: null }));
-hs = findHabits(evs, dayOf, 3, named, 10);
-check("Un palier faible confirmé plusieurs jours peut former une habitude", hs.length === 1 && hs[0].days === 3);
-check("Le seuil des habitudes écarte les variations sous le seuil stable", findHabits(evs, dayOf, 3, named, 20).length === 0);
-
 for (const [hour, fr, en, it] of [
   [0, "la nuit", "at night", "di notte"],
   [5, "le matin", "in the morning", "di mattina"],

@@ -1,19 +1,11 @@
 """Constantes d'Empreinte."""
 
 DOMAIN = "empreinte"
-VERSION = "1.3.2"
+VERSION = "1.3.0"
 CONF_POWER_ENTITY = "power_entity"        # la puissance de toute la maison (W) : le seul réglage obligatoire
 CONF_LANGUAGE = "language"
-CONF_DETECTION_W = "detection_w"
-DEFAULT_DETECTION_W = 350
-MIN_DETECTION_W = 10
-MAX_DETECTION_W = 2000
-CONF_PLATEAU_W = "plateau_w"
-DEFAULT_PLATEAU_W = 10
-MIN_PLATEAU_W = 1
-MAX_PLATEAU_W = 100
-LANGUAGES = ( "en", "fr", "it")
-DEFAULT_LANGUAGE = "en"
+LANGUAGES = ("fr", "en", "it")
+DEFAULT_LANGUAGE = "fr"
 # Réglages facultatifs (modifiables à tout moment : Paramètres → Appareils et services → Empreinte → Configurer)
 CONF_MEASURED = "measured"                # prises connectées qui mesurent déjà un appareil (retirées de l'analyse)
 CONF_CLIMATE = "climate_entity"           # la clim / pompe à chaleur (son thermostat)

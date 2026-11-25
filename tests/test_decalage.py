@@ -76,12 +76,13 @@ def test_plaque_cran_par_cran():
     found, _ = E.segment(ts, ps)
     assert len(found) == 1, found
     e = found[0]
-    assert abs(e["start"] - (T0 + 600)) <= 45 and 240 <= e["end"] - e["start"] <= 330, e
+    # (le premier cran, sous 200 W, ne se distingue pas encore du fond)
+    assert e.get("creep") and abs(e["start"] - (T0 + 600)) <= 45 and 240 <= e["end"] - e["start"] <= 330, e
     assert 650 <= max(e["prof"]) <= 800, e
 
 
 def test_petit_appareil_reste_allume():
-    """Un petit appareil reste allumé : son événement reste ouvert, mais la grosse charge finit."""
+    """Après une montée lente, un petit appareil (200 W) reste allumé : il ne prolonge pas l'utilisation."""
     ts = courbe(3600)
     ps = []
     for t in ts:
@@ -92,21 +93,17 @@ def test_petit_appareil_reste_allume():
         if 640 <= dt < 900:
             p += 450
         ps.append(FOND + p)
-    found, opened = E.segment(ts, ps)
-    assert not found and abs(opened - (T0 + 600)) <= 45, (found, opened)
-    prof = E.profile(ts, ps, ts.index(opened), opened, ts[-1], FOND)
-    parts = E.live_parts(prof, 10)
-    large = next(p for p in parts if abs(p["h"] - 450) < 20)
-    assert not large["running"] and opened + large["k1"] * E.STEP - T0 <= 960, parts
-    assert any(p["running"] and abs(p["h"] - 200) < 20 for p in parts), parts
+    found, _ = E.segment(ts, ps)
+    assert len(found) == 1, found
+    assert found[0]["end"] - T0 <= 960, found[0]
 
 
-def test_petites_hausses_sont_visibles():
-    """Deux petites hausses persistantes sont désormais visibles sans attendre le seuil principal."""
+def test_lent_et_faible_ignore():
+    """Une montée de 250 W au total (un écran, une lampe) n'ouvre rien."""
     ts = courbe(1800)
     ps = [FOND + (125 if t - T0 >= 600 else 0) + (125 if t - T0 >= 660 else 0) for t in ts]
-    found, opened = E.segment(ts, ps)
-    assert not found and abs(opened - (T0 + 600)) <= 45, (found, opened)
+    found, _ = E.segment(ts, ps)
+    assert not found, found
 
 
 def _lave_linge_en_retard():

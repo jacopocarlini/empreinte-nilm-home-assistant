@@ -61,11 +61,6 @@ co._cats_update()
 check("Avant : l'électroménager a compté le lave-vaisselle", total > 0.5, f"({round(total, 3)} kWh)")
 old_ids = {e.id for e in co.evs}
 log_before = len([x for x in co.energy_log if not x["removed"]])
-old_laundry = [(co.rows[e.id]["start"], e.id) for e in co.evs
-               if co.groups.get(e.gid, {}).get("name") == "Lave-vaisselle"]
-old_energy_by_id = {eid: sum(x["kwh"] for x in co.energy_log
-                              if x["target"] == ["cat", "menager"] and x["eid"] == eid and not x["removed"])
-                    for _, eid in old_laundry}
 
 # Une prise mesurée est ajoutée : tout est ré-analysé au redémarrage d'Empreinte
 co.store.set_meta(C.RESEGMENT_KEY, False)
@@ -80,19 +75,13 @@ men2 = co2._cat("menager")
 new_ids = {e.id for e in co2.evs}
 check("L'analyse a bien été refaite (nouveaux numéros)", new_ids and not (new_ids & old_ids), f"({len(new_ids)} utilisations)")
 check("Le lave-vaisselle est retrouvé", any(co2.groups.get(e.gid, {}).get("name") == "Lave-vaisselle" for e in co2.evs))
-laundry_events = [e for e in co2.evs if co2.groups.get(e.gid, {}).get("name") == "Lave-vaisselle"]
-recovered = sum(max(0, e.f["wh"] / 1000 - old_energy_by_id.get(
-    min(old_laundry, key=lambda old: abs(old[0] - co2.rows[e.id]["start"]))[1], 0))
-                for e in laundry_events)
-check("Le lave-vaisselle garde les kWh déjà comptés et ajoute une seule fois sa phase basse retrouvée",
-      abs(men2["total"] - total - recovered) < 1e-3,
-      f"({round(total, 3)} + {round(recovered, 3)} → {round(men2['total'], 3)} kWh)")
+check("L'électroménager n'a rien compté une seconde fois", abs(men2["total"] - total) < 1e-3,
+      f"({round(total, 3)} → {round(men2['total'], 3)} kWh)")
 counted = set(men2.get("counted", {}))
 check("… ce qui était compté suit les nouveaux numéros", counted <= {str(i) for i in new_ids | old_ids}
       and any(k in counted for k in map(str, new_ids)))
 log_after = [x for x in co2.energy_log if not x["removed"]]
-check("Le journal n'ajoute que l'énergie de la phase basse nouvellement retrouvée",
-      len(log_after) == log_before + (1 if recovered > 1e-3 else 0), f"({log_before} → {len(log_after)})")
+check("Le journal du tableau Énergie n'a pas grossi", len(log_after) == log_before, f"({log_before} → {len(log_after)})")
 check("… et il pointe vers les nouvelles utilisations", all(x["eid"] in new_ids or x.get("checked") for x in log_after))
 check("Plus rien en attente de renumérotation", not co2._renum and not co2.store.get_meta("renumber", []))
 

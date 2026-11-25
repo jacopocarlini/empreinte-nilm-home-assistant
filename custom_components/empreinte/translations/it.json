@@ -30,8 +30,7 @@
           "climate_entity": "Climatizzatore / pompa di calore",
           "climate_energy": "Contatore di energia del climatizzatore",
           "fridge_kwh_year": "Consumo del frigorifero",
-          "extra_lines": "Altri contatori di energia stimati",
-          "plateau_w": "Variazione minima dei piccoli dispositivi"
+          "extra_lines": "Altri contatori di energia stimati"
         },
         "data_description": {
           "language": "La navigazione e le date del pannello sono tradotte. Altri testi e i nomi delle entità possono restare in francese. La lingua di Home Assistant determina quella di questo modulo.",
@@ -39,8 +38,7 @@
           "climate_entity": "Quando è in funzione, Empreinte ignora le piccole variazioni del compressore invece di rilevare falsi dispositivi.",
           "climate_energy": "Il suo contatore kWh, se presente: avrà una voce nel bilancio giornaliero.",
           "fridge_kwh_year": "Consumo annuale in kWh indicato sull'etichetta energetica. Viene stimato e sottratto dai consumi non identificati. 0 = nessuna stima.",
-          "extra_lines": "Ad esempio i contatori Powercalc per luci o router: vengono sottratti dai consumi non identificati, senza aggiungerli al pannello Energia.",
-          "plateau_w": "Aumento minimo rispetto al livello precedente, in watt. Conferma su almeno 30 secondi senza richiedere una potenza costante; il filtro antirumore può alzare la soglia effettiva. Valore predefinito: 10 W."
+          "extra_lines": "Ad esempio i contatori Powercalc per luci o router: vengono sottratti dai consumi non identificati, senza aggiungerli al pannello Energia."
         }
       },
       "init": {
