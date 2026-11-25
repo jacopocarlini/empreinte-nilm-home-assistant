@@ -31,7 +31,7 @@
           "climate_energy": "Its energy meter",
           "fridge_kwh_year": "Fridge consumption",
           "extra_lines": "Other estimated energy meters",
-          "plateau_w": "Minimum stable small-load change"
+          "plateau_w": "Minimum small-load power change"
         },
         "data_description": {
           "language": "The panel navigation and dates are translated. Other panel text and entity names may still appear in French. Home Assistant's own language controls this settings form.",
@@ -40,7 +40,7 @@
           "climate_energy": "Its own kWh meter, if it has one: it gets its own line in the daily balance.",
           "fridge_kwh_year": "kWh per year, from its energy label. Too small to be seen on the curve, it is estimated and taken out of « unidentified ». 0 = not estimated.",
           "extra_lines": "For example Powercalc meters (lights, internet box, alarm): taken out of « unidentified » in the balance, never added to the Energy dashboard.",
-          "plateau_w": "Minimum increase above the preceding stable baseline, in watts. Below the main threshold, it must remain stable for at least 2 minutes. Default: 10 W."
+          "plateau_w": "Minimum increase above the previous level, in watts. Confirmed over at least 30 seconds without requiring constant power; the noise filter may raise the effective threshold. Default: 10 W."
         }
       },
       "init": {

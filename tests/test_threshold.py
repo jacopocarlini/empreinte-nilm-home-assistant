@@ -41,6 +41,31 @@ def test_live_and_overlapping_load():
     assert sorted(max(profile) for _, profile in parts) == [50, 1000]
 
 
+def test_live_small_load_confirms_without_constant_power_and_follows_variations():
+    live = C.Live(300, 10)
+    cents = {"lamp": {"P": 20, "cyc": 0}}
+    for t, power in [(0, 360), (15, 380), (30, 388)]:
+        live.feed(t, power, cents)
+    assert not live.running
+    live.feed(45, 382, cents)
+    assert "lamp" in live.running
+    for t, power in [(60, 400), (75, 380), (90, 370)]:
+        live.feed(t, power, cents)
+        assert live.running["lamp"]["off_since"] is None
+    live.feed(105, 360, cents)
+    assert live.running["lamp"]["off_since"] == 105
+    live.feed(270, 360, cents)
+    assert not live.running
+
+
+def test_live_rejects_an_isolated_small_spike():
+    live = C.Live(300, 10)
+    cents = {"lamp": {"P": 20, "cyc": 0}}
+    for t, power in [(0, 60), (15, 80), (30, 60), (45, 60)]:
+        live.feed(t, power, cents)
+    assert not live.running and not live.waiting
+
+
 def test_extract_and_preserve_low_power_load():
     profile = [50] * 8 + [1050] * 8 + [50] * 8
     result = E.extract_component(profile, 8, 1000, 50, 50)
@@ -104,7 +129,7 @@ def test_plateau_threshold_change_reanalyses_stored_samples():
 
 def test_upgrade_reanalyses_history_with_unchanged_default_thresholds():
     co = make()
-    co.store.set_meta("resegment_v7", True)
+    co.store.set_meta("resegment_v8", True)
     co.store.set_meta(C.RESEGMENT_KEY, False)
     co.store.set_meta("detection_w", 350)
     new = C.Coordinator(co.hass, FakeEntry())

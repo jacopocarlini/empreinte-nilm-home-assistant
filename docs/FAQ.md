@@ -36,7 +36,7 @@ C'est le cas le plus difficile : même puissance, souvent en même temps. Mettez
 
 Il contient les consommations non attribuées à un appareil : bruit, charges trop brèves ou instables, appareils qui se chevauchent… Pour le réduire : indiquez la consommation du frigo, ajoutez des compteurs estimés (Powercalc) dans les réglages, et nommez les appareils que vous reconnaissez.
 
-Une petite variation stable apparaît après 2 minutes si elle atteint le seuil réglable (10 W par défaut), par rapport au niveau précédent. Les cycles de 60–150 W peuvent ainsi être détectés sans pic de démarrage. Une phase faible après une chauffe est traitée séparément, jusqu'à 180 W. Cela ne garantit pas que chaque appareil de cette puissance soit identifiable sur le compteur agrégé.
+Une petite hausse peut être détectée après au moins 30 secondes si elle atteint le seuil réglable (10 W par défaut), par rapport au niveau précédent. Sa puissance peut varier : aucun plateau constant n'est exigé. Le filtre relève le seuil effectif lorsque les mesures sont bruitées. Les cycles de 60–150 W peuvent ainsi être détectés sans pic de démarrage. Une phase faible après une chauffe est traitée séparément, jusqu'à 180 W. Plusieurs jours d'observation et vos corrections aident à reconnaître les appareils, sans pouvoir toujours séparer des charges qui démarrent ensemble ou produisent des courbes identiques.
 
 ### Est-ce que ça ralentit Home Assistant ?
 

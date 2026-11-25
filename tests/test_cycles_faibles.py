@@ -47,14 +47,60 @@ def test_small_plateau_is_relative_to_the_preceding_60w_baseline():
     assert not E.segment(*small_curve([(300, 600, 0)]), 350, 10)[0]
 
 
-def test_short_or_unstable_small_changes_are_rejected():
-    ts, ps = small_curve([(300, 420, 10)])
+def test_isolated_small_spikes_and_baseline_noise_are_rejected():
+    ts, ps = small_curve([(300, 315, 10)])
     assert not E.segment(ts, ps, 350, 10)[0]
-    ts, ps = small_curve([(300, 750, 10)])
+    ts, ps = small_curve([])
     for i, t in enumerate(ts):
         if t >= T0 + 300 and t < T0 + 750:
-            ps[i] += 5 if i % 2 else 0
+            ps[i] += 15 if i % 2 else 0
     assert not E.segment(ts, ps, 350, 10)[0]
+
+
+def test_short_variable_small_load_keeps_its_whole_profile():
+    ts, ps = small_curve([(300, 315, 15), (315, 330, 25), (330, 345, 12),
+                          (345, 360, 20), (360, 375, 10)])
+    found, opened = E.segment(ts, ps, 350, 10)
+    assert opened is None and len(found) == 1, (found, opened)
+    assert found[0]["start"] == T0 + 300 and found[0]["end"] == T0 + 375
+    assert found[0]["prof"] == [15, 25, 12, 20, 10]
+    live, opened = E.segment(ts[:23], ps[:23], 350, 10)
+    assert not live and opened == T0 + 300
+
+
+def test_small_load_does_not_end_after_a_larger_overlapping_peak():
+    ts, ps = small_curve([(300, 900, 12), (450, 600, 1500)])
+    found, opened = E.segment(ts, ps, 350, 10)
+    assert opened is None and len(found) == 1, (found, opened)
+    assert found[0]["end"] == T0 + 900
+
+
+def test_noise_does_not_keep_small_events_running_or_hide_large_loads():
+    import random
+    rng = random.Random(17)
+    ts, ps = small_curve([(300, 450, 90), (750, 900, 1500)])
+    ps = [p + rng.gauss(0, 6) for p in ps]
+    found, opened = E.segment(ts, ps, 350, 10)
+    assert opened is None and len(found) == 2, (found, opened)
+    assert abs(found[0]["start"] - (T0 + 300)) <= 15
+    assert abs(found[0]["end"] - (T0 + 450)) <= 30
+    assert abs(found[1]["start"] - (T0 + 750)) <= 15
+    assert abs(found[1]["end"] - (T0 + 900)) <= 30
+
+
+def test_recent_level_changes_do_not_mask_a_new_small_load():
+    ts, ps = small_curve([(300, 450, 90), (750, 840, 10)])
+    found, opened = E.segment(ts, ps, 350, 10)
+    assert opened is None and len(found) == 2, (found, opened)
+    assert found[1]["start"] == T0 + 750 and found[1]["end"] == T0 + 840
+
+
+def test_small_load_can_rise_across_several_samples():
+    ts, ps = small_curve([(300, 315, 6), (315, 330, 12), (330, 345, 18),
+                          (345, 390, 24)])
+    found, opened = E.segment(ts, ps, 350, 10)
+    assert opened is None and len(found) == 1, (found, opened)
+    assert found[0]["start"] == T0 + 315 and found[0]["end"] == T0 + 390
 
 
 def test_small_plateau_range_without_a_startup_spike():

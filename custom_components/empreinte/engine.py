@@ -95,7 +95,7 @@ LOW_MIN_W = 60
 LOW_MAX_W = 180
 LOW_STABLE_S = 90
 LOW_SPIKE_S = 60
-SMALL_STABLE_S = 120
+SMALL_CONFIRM_S = 30
 SMALL_PHASE_STABLE_S = 90
 PROFILE_BINS = 16
 
@@ -140,6 +140,9 @@ def segment(ts: list[float], ps: list[float], on_w: float = ON_W, plateau_w: flo
     small_event = False
     phase_candidate = None
     phase_level = None
+    small_candidate = None
+    small_base = 0.0
+    small_required = plateau_w
 
     def close(i_next):
         t0 = ts[i_start]
@@ -158,6 +161,7 @@ def segment(ts: list[float], ps: list[float], on_w: float = ON_W, plateau_w: flo
                 i_start = None
             low_candidate, low_level = None, None
             small_event, phase_candidate, phase_level = False, None, None
+            small_candidate = None
             quiet, base, rearm, run_i = deque(), None, t + REARM_S, None
         prev_t = t
         if rearm is not None and t < rearm:
@@ -186,6 +190,7 @@ def segment(ts: list[float], ps: list[float], on_w: float = ON_W, plateau_w: flo
                         i_start, last_above, base_ev = run_i, i, base
                         peak_ev = max(ps[run_i:i + 1]) - base_ev
                         creep, run_i = True, None
+                        small_candidate = None
                         continue
                     quiet.append((t, p))
                     continue
@@ -193,7 +198,33 @@ def segment(ts: list[float], ps: list[float], on_w: float = ON_W, plateau_w: flo
                 i_start, last_above, peak_ev, creep = i, i, p - base_ev, False
                 low_candidate, low_level = None, None
                 small_event, phase_candidate, phase_level = False, None, None
+                small_candidate = None
                 continue
+            # Confirmer une hausse, pas une puissance constante : le petit appareil peut varier.
+            if small_candidate is None:
+                prior = [q[1] for q in quiet if q[0] >= t - PRE_S]
+                if prior:
+                    preceding = engine_median(prior)
+                    noise_values = [q[1] for q in quiet]
+                    changes = [abs(b - a) for a, b in zip(noise_values, noise_values[1:])]
+                    required = max(plateau_w, 4 * engine_median(changes),
+                                   2 * quantile(changes, 0.9)) if changes else plateau_w
+                    if p - preceding >= required and i > 0 and p > ps[i - 1]:
+                        small_candidate, small_base, small_required = i, preceding, required
+            if small_candidate is not None:
+                levels = [v - small_base for v in ps[small_candidate:i + 1]]
+                if levels[-1] < 0.5 * small_required:
+                    small_candidate = None
+                elif t - ts[small_candidate] >= SMALL_CONFIRM_S:
+                    if engine_median(levels) >= small_required:
+                        i_start, last_above, base_ev = small_candidate, i, small_base
+                        peak_ev = max(levels)
+                        small_event, small_candidate, run_i = True, None, None
+                        creep = False
+                        low_candidate, low_level = None, None
+                        phase_candidate, phase_level = None, None
+                        continue
+                    small_candidate = None
             delta = p - base
             if delta > off_w or delta >= plateau_w:
                 if run_i is None:
@@ -205,20 +236,8 @@ def segment(ts: list[float], ps: list[float], on_w: float = ON_W, plateau_w: flo
                     i_start, last_above, base_ev = run_i, i, base
                     peak_ev = max(ps[run_i:i + 1]) - base_ev
                     creep, run_i = True, None
+                    small_candidate = None
                     continue
-                if elapsed >= SMALL_STABLE_S and delta < on_w:
-                    prior = [q[1] for q in quiet if ts[run_i] - PRE_S <= q[0] < ts[run_i]]
-                    baseline = max(base, engine_median(prior)) if prior else base
-                    stable_i = next((j for j in range(run_i, i + 1)
-                                     if ts[j] >= t - SMALL_STABLE_S), run_i)
-                    levels = [ps[j] - baseline for j in range(stable_i, i + 1)]
-                    level = engine_median(levels)
-                    if (plateau_w <= level < on_w and max(levels) - min(levels) <= max(4, 0.2 * level)
-                            and all(q[1] - baseline < on_w for q in quiet if ts[run_i] - PRE_S <= q[0] < ts[run_i])):
-                        i_start, last_above, base_ev = run_i, i, baseline
-                        peak_ev = max(levels)
-                        small_event, run_i = True, None
-                        continue
             else:
                 run_i = None
             quiet.append((t, p))
@@ -258,7 +277,7 @@ def segment(ts: list[float], ps: list[float], on_w: float = ON_W, plateau_w: flo
             # resté allumé après elle)
             threshold = (max(plateau_w * 0.5, 0.5 * low_level) if low_level is not None else
                          max(plateau_w * 0.5, 0.5 * phase_level) if phase_level is not None else
-                         max(plateau_w * 0.5, OFF_FRAC * peak_ev) if small_event else
+                         small_required * 0.5 if small_event else
                          max(off_w, (CREEP_OFF_FRAC if creep else OFF_FRAC) * peak_ev))
             if p - base_ev > threshold:
                 if t - ts[i_start] > MAX_EVENT_S:

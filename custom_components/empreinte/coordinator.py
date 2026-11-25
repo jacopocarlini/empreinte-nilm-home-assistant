@@ -31,7 +31,7 @@ MENAGER_RE = re.compile(r"lave[- ]?linge|lave[- ]?vaisselle|s[eè]che[- ]?linge|
 
 _LOGGER = logging.getLogger(__name__)
 PROFILE_MAX_POINTS = 120
-RESEGMENT_KEY = "resegment_v8"   # à changer quand la façon de mesurer change : tout est re-mesuré
+RESEGMENT_KEY = "resegment_v9"   # à changer quand la façon de mesurer change : tout est re-mesuré
 
 
 def _slug(s: str) -> str:
@@ -98,24 +98,28 @@ class Live:
                         del self.running[gid]             # un appareil qui ne clignote pas, qui s'éteint et se rallume :
                         changed = True                    # c'était autre chose (plaques, four…)
                     elif gid not in self.waiting:
-                        self.waiting[gid] = {"start": t, "power": d, "off_since": None, "floor": floor, "before": self.prev}
+                        self.waiting[gid] = {"start": t, "power": d, "off_since": None,
+                                             "floor": self.prev if d < self.min_edge else floor, "before": self.prev}
             elif d <= -self.min_edge or (
                     any(r["power"] < self.min_edge for r in self.running.values()) and d <= -self.plateau_w):
                 on = {g: r["power"] for g, r in self.running.items() if not r["off_since"]}
                 gid = self._best(-d, on, 0.25)
-                if gid:
+                if gid and (self.running[gid]["power"] >= self.min_edge
+                            or p <= self.running[gid]["floor"] + 0.5 * self.plateau_w):
                     self.running[gid]["off_since"] = t
                     changed = True
-                elif on and abs(sum(on.values()) + d) <= max(min(250, 0.25 * sum(on.values())), 0.25 * -d):
+                elif not gid and on and abs(sum(on.values()) + d) <= max(min(250, 0.25 * sum(on.values())), 0.25 * -d):
                     for g in on:
-                        self.running[g]["off_since"] = t
-                    changed = True
+                        if self.running[g]["power"] >= self.min_edge or p <= self.running[g]["floor"] + 0.5 * self.plateau_w:
+                            self.running[g]["off_since"] = t
+                            changed = True
         # À confirmer : le pic de démarrage d'un chauffage est passé après 1 min. Si la puissance reste bien plus haute,
         # le saut n'était que le début d'un plus gros appareil (une valeur reçue en pleine montée) : ce n'est pas lui.
         for g, r in list(self.waiting.items()):
-            if p < r["floor"] + 0.5 * r["power"]:
+            off = 0.5 * (self.plateau_w if r["power"] < self.min_edge else r["power"])
+            if p < r["floor"] + off:
                 del self.waiting[g]
-            elif t - r["start"] >= (engine.SMALL_STABLE_S if r["power"] < engine.OFF_W else LIVE_CONFIRM_S):
+            elif t - r["start"] >= (engine.SMALL_CONFIRM_S if r["power"] < self.min_edge else LIVE_CONFIRM_S):
                 del self.waiting[g]
                 step = p - r["before"]
                 if step <= 1.6 * r["power"] and g in cents and not self._closer_other(step, cents[g]["P"], others)                         and not self._cycling(r, cents[g]):
@@ -123,7 +127,8 @@ class Live:
                     changed = True
         # la courbe est revenue à son fond : quoi qu'il se soit passé, il ne peut plus tourner
         for g, r in self.running.items():
-            if not r["off_since"] and "floor" in r and p < r["floor"] + 0.5 * r["power"]:
+            off = 0.5 * (self.plateau_w if r["power"] < self.min_edge else r["power"])
+            if not r["off_since"] and "floor" in r and p < r["floor"] + off:
                 r["off_since"] = t
                 changed = True
         for g in [g for g, r in self.running.items()

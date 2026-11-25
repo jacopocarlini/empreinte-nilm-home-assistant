@@ -4,7 +4,7 @@ Pour les curieux et pour ceux qui veulent modifier le programme. Pour l'utiliser
 
 ## L'algorithme, étape par étape
 
-1. **Découpage** (`engine.segment`) : une hausse au-dessus du seuil principal (350 W par défaut) ouvre une utilisation. Un second seuil (10 W par défaut) détecte aussi un palier stable pendant au moins 2 minutes, mesuré au-dessus du niveau de fond précédent — pas de la puissance totale de la maison. Il couvre les variations inférieures au seuil principal, y compris les cycles de 60–150 W sans pic de démarrage. Une phase stable jusqu'à 180 W après une chauffe peut prolonger la même utilisation ; les pauses jusqu'à 150 s sont conservées. La courbe agrégée ne permet pas toujours de distinguer deux appareils qui se chevauchent.
+1. **Découpage** (`engine.segment`) : une hausse au-dessus du seuil principal (350 W par défaut) ouvre une utilisation. Un second seuil (10 W par défaut) détecte les petites hausses par rapport au niveau médian précédent, avec une confirmation d'au moins 30 secondes mais sans exiger une puissance constante. Le bruit est estimé sur les différences entre mesures récentes et peut relever le seuil effectif. Le fond de départ reste fixe pendant la confirmation ; la fin dépend du retour vers ce fond, pas d'une fraction du pic. Cela couvre notamment les cycles variables de 60–150 W sans pic de démarrage. Une phase stable jusqu'à 180 W après une chauffe peut prolonger la même utilisation ; les pauses jusqu'à 150 s sont conservées. La courbe agrégée ne permet pas toujours de distinguer deux appareils qui se chevauchent.
 2. **Résumé** (`engine.features`) : puissance du palier de départ, durée, part du temps allumé, nombre de marche/arrêt, forme (stable, paliers, cycles), heure et signature normalisée de la courbe complète.
 3. **Séparation** (`engine.split_session`) : quand plusieurs appareils tournent ensemble, chaque montée est associée à la descente de même taille. On ne sépare que si c'est net.
 4. **Recollage** (`engine.should_stitch`) : un appareil qui reprend dans les 6 minutes avec la même puissance (thermostat) reste une seule utilisation.
@@ -28,7 +28,7 @@ pour chaque ligne, au prix du kWh du tableau Énergie. Une ligne ajoutée au tab
 |---|---|
 | `power_entity` | La puissance de toute la maison (W ou VA). Seul réglage obligatoire, choisi à l'installation. |
 | `detection_w` | Seuil principal des utilisations à forte variation (350 W par défaut). |
-| `plateau_w` | Hausse stable minimale par rapport au fond précédent (10 W par défaut, plage 1–100 W). Les variations sous le seuil principal doivent rester stables 2 minutes ; les phases basses après une chauffe suivent une règle distincte. Le réglage est disponible dans le panneau et les options de l'intégration. Le changement de seuil relance l'analyse de l'historique conservé. |
+| `plateau_w` | Hausse minimale des petits appareils par rapport au niveau précédent (10 W par défaut, plage 1–100 W). Confirmation sur au moins 30 secondes sans contrainte de puissance constante ; seuil effectif adapté au bruit. Les phases basses après une chauffe suivent une règle distincte. Disponible dans le panneau et les options de l'intégration. Le changement de seuil relance l'analyse de l'historique conservé. Le nom interne est conservé pour la compatibilité des réglages. |
 | `measured` | Prises qui mesurent déjà un appareil : leur puissance est soustraite avant l'analyse. |
 | `climate_entity` | La clim / pompe à chaleur : quand elle tourne, les sauts de moins de 450 W ne sont pas des appareils. |
 | `climate_energy` | Son compteur de kWh : une ligne lissée dans le bilan, qui ne prend jamais plus que ce que la maison a laissé. |
@@ -78,8 +78,8 @@ sur votre propre maison, rejouez votre historique dans `dev/harness.html` (branc
 ## Limites connues
 
 - Le Linky donne une valeur toutes les 7 à 38 s : un appareil allumé moins de 30 s est invisible.
-- Les petits appareils doivent créer une variation stable supérieure au fond précédent. Une variation plus faible que le seuil, ou trop courte/bruitée, reste dans le fond. Une puissance agrégée ne permet pas de confirmer l'identité d'un appareil.
-- Les paliers faibles peuvent être détectés et regroupés, mais les capteurs de marche dédiés ne sont pas garantis pour eux. Le suivi en direct exige une confirmation plus longue pour ces petites puissances.
+- Les petits appareils doivent créer une hausse discernable par rapport au niveau précédent, mais leur puissance peut ensuite varier. Une variation plus faible que le seuil effectif, ou trop courte/bruitée, reste dans le fond. Une puissance agrégée ne permet pas de confirmer l'identité d'un appareil.
+- Les petits appareils peuvent être détectés et regroupés, mais les capteurs de marche dédiés ne sont pas garantis pour eux. Le suivi en direct des petits sauts connus utilise aussi une confirmation de 30 secondes, avec des contrôles supplémentaires pour éviter les fausses identifications.
 - Une modification d'un seuil resegmente l'historique encore conservé ; des événements/réponses peuvent donc changer ou ne plus avoir d'équivalent. Une estimation séparée du frigo peut compter une seconde fois un événement identifié comme frigo : désactivez-la si vous utilisez ce groupe.
 - Le capteur de puissance du Linky est souvent en VA (puissance apparente) : les kWh affichés par Empreinte sont un peu au-dessus des vrais.
 - Des plaques à induction qui changent souvent de puissance, en même temps que le four, restent le cas le plus difficile.
